@@ -284,7 +284,7 @@ export default function Settings() {
         settings.llm.api_key !== original.llm.api_key;
       if (llmChanged) {
         // Only send api_key if user actually changed it (not still masked)
-        const llmPayload: Record<string, string> = {};
+        const llmPayload = {} as ServiceConfig;
         if (settings.llm.base_url !== original.llm.base_url) llmPayload.base_url = settings.llm.base_url;
         if (settings.llm.model !== original.llm.model) llmPayload.model = settings.llm.model;
         if (settings.llm.api_key !== original.llm.api_key) llmPayload.api_key = settings.llm.api_key;
@@ -296,7 +296,7 @@ export default function Settings() {
         settings.embedding.model !== original.embedding.model ||
         settings.embedding.api_key !== original.embedding.api_key;
       if (embChanged) {
-        const embPayload: Record<string, string> = {};
+        const embPayload = {} as ServiceConfig;
         if (settings.embedding.base_url !== original.embedding.base_url)
           embPayload.base_url = settings.embedding.base_url;
         if (settings.embedding.model !== original.embedding.model) embPayload.model = settings.embedding.model;
@@ -311,7 +311,7 @@ export default function Settings() {
         settings.reranker.api_key !== original.reranker.api_key ||
         settings.reranker.enabled !== original.reranker.enabled;
       if (rerChanged) {
-        const rerPayload: Record<string, string | boolean> = {};
+        const rerPayload = {} as RerankerConfig;
         if (settings.reranker.base_url !== original.reranker.base_url)
           rerPayload.base_url = settings.reranker.base_url;
         if (settings.reranker.model !== original.reranker.model) rerPayload.model = settings.reranker.model;

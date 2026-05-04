@@ -24,21 +24,42 @@ struct SidecarState {
 fn spawn_sidecar(app: &tauri::AppHandle) -> Result<(), String> {
     use tauri_plugin_shell::process::CommandEvent;
 
+    // Resolve the project root reliably.
+    //
+    // During `tauri dev`, Tauri sets the CWD to the *project root* (the directory
+    // containing `package.json` / `src-tauri/`), so we can use it directly.
+    //
+    // We also try the canonical path derived from the binary location as a fallback.
+    let project_root = {
+        let cwd = std::env::current_dir().unwrap_or_default();
+        // If `backend/` exists under the CWD, we're already at the project root.
+        if cwd.join("backend").exists() {
+            cwd
+        } else if let Some(parent) = cwd.parent() {
+            // One level up (e.g., if CWD somehow ended up inside src-tauri/)
+            if parent.join("backend").exists() {
+                parent.to_path_buf()
+            } else {
+                cwd // best-effort
+            }
+        } else {
+            cwd
+        }
+    };
+
     let (mut rx, child) = if cfg!(debug_assertions) {
-        // Dev: run the Python backend directly.
-        // The current working directory of a Tauri dev process is src-tauri/,
-        // so we go up one level to reach the project root where backend/ lives.
+        // Dev: run the Python backend from the venv directly.
+        let venv_python = project_root.join("backend/.venv/bin/python3");
+        let python_bin = if venv_python.exists() {
+            venv_python.to_string_lossy().to_string()
+        } else {
+            "python3".to_string()
+        };
+
         app.shell()
-            .command("python3")
+            .command(&python_bin)
             .args(["backend/main.py", "--dev"])
-            .current_dir(
-                std::env::current_dir()
-                    .unwrap_or_default()
-                    .parent()
-                    .unwrap()
-                    .parent()
-                    .unwrap_or(std::path::Path::new(".")),
-            )
+            .current_dir(&project_root)
             .spawn()
             .map_err(|e| format!("Failed to spawn dev sidecar: {}", e))?
     } else {
@@ -138,7 +159,7 @@ fn stop_sidecar(app: tauri::AppHandle) -> Result<(), String> {
 /// so the frontend can verify the backend is alive and ready.
 #[tauri::command]
 fn ping_sidecar() -> Result<serde_json::Value, String> {
-    let resp = ureq::get("http://localhost:8000/api/health")
+    let resp = ureq::get("http://localhost:8008/api/health")
         .timeout(std::time::Duration::from_secs(5))
         .call()
         .map_err(|e| format!("Health check failed: {}", e))?;

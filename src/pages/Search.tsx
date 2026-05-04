@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSidecar } from "../hooks/useSidecar";
 import { apiPost } from "../lib/sidecar";

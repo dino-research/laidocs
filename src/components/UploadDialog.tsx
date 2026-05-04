@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { apiGet, apiPost } from "../lib/sidecar";
+import { apiGet } from "../lib/sidecar";
 import { apiUpload } from "../lib/api-upload";
 
 interface Folder {
