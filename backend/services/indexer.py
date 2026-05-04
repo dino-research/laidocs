@@ -214,12 +214,16 @@ class Indexer:
         results: dict[str, int] = {}
         docs = vault.list_documents()
         for meta in docs:
-            result = vault.get_document(meta["id"])
+            # vault.list_documents() returns dicts keyed by "doc_id" (not "id")
+            doc_id = meta.get("doc_id") or meta.get("id")
+            if not doc_id:
+                continue
+            result = vault.get_document(doc_id)
             if result is None:
                 continue
             content, _ = result
-            count = self.index_document(meta["id"], content)
-            results[meta["id"]] = count
+            count = self.index_document(doc_id, content)
+            results[doc_id] = count
         return results
 
     # ----------------------------------------------------------------

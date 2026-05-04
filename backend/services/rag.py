@@ -93,8 +93,7 @@ def _retrieve_vector_chunks(doc_id: str, query_vector: list[float], top_k: int =
     table = get_lance_table()
     try:
         df = (
-            table.search(query_vector)
-            .vector_column_name("vector")
+            table.search(query_vector, vector_column_name="vector")
             .where(f"doc_id = '{doc_id}'")
             .metric("cosine")
             .limit(top_k)

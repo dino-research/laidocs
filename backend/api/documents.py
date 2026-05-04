@@ -56,6 +56,11 @@ documents_router = APIRouter(prefix="/api/documents", tags=["documents"])
 async def list_documents(folder: str | None = None):
     """List all documents, optionally filtered by folder."""
     docs = vault.list_documents(folder=folder)
+    # Normalise: expose both 'id' (frontend) and 'doc_id' (internal) for
+    # compatibility with the React client which expects the 'id' key.
+    for doc in docs:
+        if "id" not in doc and "doc_id" in doc:
+            doc["id"] = doc["doc_id"]
     return docs
 
 
@@ -80,11 +85,19 @@ async def upload_document(
     try:
         markdown, title = converter.convert_file(tmp_path)
 
+        # If converter fell back to the temp-file stem, use the real filename instead
+        original_stem = Path(file.filename).stem if file.filename else ""
+        if not title or title.startswith("tmp") or title == Path(tmp_path).stem:
+            title = original_stem
+
+        # Derive a clean .md filename from the original filename stem
+        clean_filename = original_stem + ".md" if original_stem else (file.filename or "document.md")
+
         meta = vault.save_document(
             folder=folder or "unsorted",
-            filename=file.filename or "document.md",
+            filename=clean_filename,
             content=markdown,
-            title=title,
+            title=title or clean_filename.removesuffix(".md"),
             source_type="file",
             original_path=file.filename or "",
         )
@@ -221,6 +234,24 @@ async def update_document(doc_id: str, body: dict, background_tasks: BackgroundT
     background_tasks.add_task(get_indexer().index_document, doc_id, markdown)
 
     return {"id": doc_id, "updated": True}
+
+
+@documents_router.post("/reindex")
+async def reindex_all_documents(background_tasks: BackgroundTasks):
+    """Re-index all documents into the vector store.
+
+    Useful after a schema migration (e.g. the LanceDB vector column was
+    recreated with the correct FixedSizeList type).  Runs in a background
+    task so the response returns immediately.
+    """
+    def _do_reindex():
+        indexer = get_indexer()
+        results = indexer.reindex_all()
+        total = sum(results.values())
+        print(f"[reindex] Done: {len(results)} documents, {total} chunks")
+
+    background_tasks.add_task(_do_reindex)
+    return {"status": "reindex_started"}
 
 
 @documents_router.delete("/{doc_id}")

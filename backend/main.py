@@ -47,6 +47,40 @@ async def lifespan(app: FastAPI):
     VAULT_DIR.mkdir(parents=True, exist_ok=True)
     (LAIDOCS_HOME / "data").mkdir(parents=True, exist_ok=True)
     init_db()
+
+    # Initialise LanceDB — this also auto-migrates the vector column schema
+    # from the old variable-length list to FixedSizeList if needed.
+    try:
+        from backend.core.database import get_lance_table, _is_fixed_size_vector_schema
+        import lancedb, pyarrow as pa
+
+        db = lancedb.connect(str(LAIDOCS_HOME / "data" / "vectors.lance"))
+        table_existed = "chunks" in db.table_names()
+        old_schema_bad = False
+        if table_existed:
+            t = db.open_table("chunks")
+            old_schema_bad = not _is_fixed_size_vector_schema(t)
+
+        get_lance_table()  # triggers migration + creation
+
+        if old_schema_bad:
+            # Old table had wrong schema; re-index all documents in background.
+            print("[sidecar] LanceDB schema migrated → scheduling full re-index")
+            from backend.services.indexer import get_indexer
+
+            def _startup_reindex():
+                try:
+                    results = get_indexer().reindex_all()
+                    total = sum(results.values())
+                    print(f"[sidecar] Re-index complete: {len(results)} docs, {total} chunks")
+                except Exception as exc:
+                    print(f"[sidecar] Re-index failed: {exc}")
+
+            import threading
+            threading.Thread(target=_startup_reindex, daemon=True).start()
+    except Exception as exc:
+        print(f"[sidecar] LanceDB init warning: {exc}")
+
     print("[sidecar] Server ready")
     yield
     # Shutdown (nothing to clean up yet)
