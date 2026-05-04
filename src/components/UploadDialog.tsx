@@ -2,19 +2,31 @@ import { useEffect, useRef, useState } from "react";
 import { apiGet } from "../lib/sidecar";
 import { apiUpload } from "../lib/api-upload";
 
-interface Folder {
-  path: string;
-  name: string;
-  document_count: number;
-}
-
-interface UploadDialogProps {
-  open: boolean;
-  onClose: () => void;
-  onUploadSuccess: () => void;
-}
+interface Folder { path: string; name: string; document_count: number; }
+interface UploadDialogProps { open: boolean; onClose: () => void; onUploadSuccess: () => void; }
 
 const ACCEPTED_EXTENSIONS = ".pdf,.docx,.pptx,.xlsx,.md,.txt,.html,.csv";
+
+const IconX = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+  </svg>
+);
+
+const IconUpload = () => (
+  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="16 16 12 12 8 16"/>
+    <line x1="12" y1="12" x2="12" y2="21"/>
+    <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+  </svg>
+);
+
+const IconFile = () => (
+  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+    <polyline points="13 2 13 9 20 9"/>
+  </svg>
+);
 
 export default function UploadDialog({ open, onClose, onUploadSuccess }: UploadDialogProps) {
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -28,169 +40,104 @@ export default function UploadDialog({ open, onClose, onUploadSuccess }: UploadD
 
   useEffect(() => {
     if (!open) return;
-    apiGet<Folder[]>("/api/folders/")
-      .then(setFolders)
-      .catch(() => setFolders([]));
-    // Reset state on open
-    setSelectedFile(null);
-    setSelectedFolder("");
-    setError("");
-    setSuccess("");
-    setDragOver(false);
+    apiGet<Folder[]>("/api/folders/").then(setFolders).catch(() => setFolders([]));
+    setSelectedFile(null); setSelectedFolder(""); setError(""); setSuccess(""); setDragOver(false);
   }, [open]);
 
   if (!open) return null;
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(true);
-  };
-
-  const handleDragLeave = () => {
-    setDragOver(false);
-  };
-
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
+    e.preventDefault(); setDragOver(false);
     const file = e.dataTransfer.files[0];
     if (file) setSelectedFile(file);
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) setSelectedFile(file);
-  };
-
   const handleUpload = async () => {
-    if (!selectedFile) {
-      setError("Please select a file");
-      return;
-    }
-    setError("");
-    setSuccess("");
-    setUploading(true);
+    if (!selectedFile) { setError("Please select a file"); return; }
+    setError(""); setSuccess(""); setUploading(true);
     try {
       await apiUpload("/api/documents/upload", selectedFile, selectedFolder);
       setSuccess(`"${selectedFile.name}" uploaded successfully!`);
       onUploadSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
-    }
+    } finally { setUploading(false); }
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="w-full max-w-md rounded-xl bg-gray-900 p-6 shadow-2xl border border-gray-800">
+    <div className="dialog-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="dialog-panel">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">Upload File</h2>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </button>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 500, color: "var(--text-primary)", margin: 0 }}>Upload File</h2>
+          <button onClick={onClose} className="btn-icon"><IconX /></button>
         </div>
 
-        {/* Success message */}
         {success && (
-          <div className="mb-4 rounded-md bg-green-900/30 border border-green-800 p-3 text-sm text-green-300">
+          <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(109,155,109,0.12)", border: "1px solid rgba(109,155,109,0.3)", borderRadius: 8, fontSize: 13, color: "var(--success)" }}>
             {success}
           </div>
         )}
-
-        {/* Error message */}
         {error && (
-          <div className="mb-4 rounded-md bg-red-900/30 border border-red-800 p-3 text-sm text-red-300">
+          <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(192,112,112,0.1)", border: "1px solid rgba(192,112,112,0.3)", borderRadius: 8, fontSize: 13, color: "var(--error)" }}>
             {error}
           </div>
         )}
 
-        {/* Drag & drop zone */}
+        {/* Drop zone */}
         <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`mb-4 flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors ${
-            dragOver
-              ? "border-blue-500 bg-blue-500/10"
-              : selectedFile
-              ? "border-gray-600 bg-gray-800"
-              : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
-          }`}
+          style={{
+            marginBottom: 20,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            padding: "36px 24px",
+            borderRadius: 10,
+            border: `2px dashed ${dragOver ? "var(--border-strong)" : "var(--border)"}`,
+            background: dragOver ? "var(--surface-alt)" : "transparent",
+            cursor: "pointer",
+            transition: "all 0.2s",
+          }}
         >
+          <div style={{ color: "var(--text-muted)", marginBottom: 12, opacity: 0.6 }}>
+            {selectedFile ? <IconFile /> : <IconUpload />}
+          </div>
           {selectedFile ? (
             <>
-              <div className="mb-2 text-3xl">📎</div>
-              <p className="text-sm font-medium text-white">{selectedFile.name}</p>
-              <p className="text-xs text-gray-500">{(selectedFile.size / 1024).toFixed(1)} KB</p>
+              <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: "0 0 4px" }}>{selectedFile.name}</p>
+              <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0, letterSpacing: "1px" }}>{(selectedFile.size / 1024).toFixed(1)} KB</p>
             </>
           ) : (
             <>
-              <div className="mb-2 text-3xl">📤</div>
-              <p className="text-sm text-gray-300">Drag & drop a file here</p>
-              <p className="text-xs text-gray-500">or click to browse</p>
+              <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: "0 0 4px" }}>Drag & drop a file here</p>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>or click to browse</p>
             </>
           )}
         </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={ACCEPTED_EXTENSIONS}
-          onChange={handleFileSelect}
-          className="hidden"
-        />
+        <input ref={fileInputRef} type="file" accept={ACCEPTED_EXTENSIONS} onChange={(e) => { const f = e.target.files?.[0]; if (f) setSelectedFile(f); }} style={{ display: "none" }} />
 
-        {/* Folder selector */}
-        <div className="mb-4">
-          <label className="mb-1 block text-sm font-medium text-gray-300">Folder</label>
-          <select
-            value={selectedFolder}
-            onChange={(e) => setSelectedFolder(e.target.value)}
-            className="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-          >
+        {/* Folder select */}
+        <div style={{ marginBottom: 24 }}>
+          <label style={{ display: "block", fontSize: 11, color: "var(--text-muted)", letterSpacing: "1.4px", textTransform: "uppercase", marginBottom: 6 }}>Folder</label>
+          <select value={selectedFolder} onChange={(e) => setSelectedFolder(e.target.value)} className="warp-input" style={{ appearance: "none" }}>
             <option value="">None</option>
-            {folders.map((f) => (
-              <option key={f.path} value={f.path}>
-                {f.name || f.path}
-              </option>
-            ))}
+            {folders.map((f) => <option key={f.path} value={f.path}>{f.name || f.path}</option>)}
           </select>
         </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded-md px-4 py-2 text-sm font-medium text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleUpload}
-            disabled={uploading || !selectedFile}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={handleUpload} disabled={uploading || !selectedFile} className="btn-primary">
             {uploading ? (
-              <span className="flex items-center gap-2">
-                <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 13, height: 13, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "var(--text-secondary)", borderRadius: "50%", display: "inline-block" }} className="spin" />
                 Converting…
               </span>
-            ) : (
-              "Upload"
-            )}
+            ) : "Upload"}
           </button>
         </div>
       </div>

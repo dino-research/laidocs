@@ -7,58 +7,61 @@ interface MarkdownPreviewProps {
 
 export default function MarkdownPreview({ content }: MarkdownPreviewProps) {
   return (
-    <div className="markdown-preview overflow-auto h-full p-6">
+    <div style={{ overflow: "auto", height: "100%", padding: "28px 32px" }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => (
-            <h1 className="text-2xl font-bold text-gray-50 mb-4 mt-6 first:mt-0 border-b border-gray-700 pb-2">
+            <h1 style={{ fontSize: 24, fontWeight: 400, color: "var(--text-primary)", marginBottom: 16, marginTop: 24, paddingBottom: 8, borderBottom: "1px solid var(--border)", lineHeight: 1.3, letterSpacing: "-0.24px" }}>
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="text-xl font-bold text-gray-50 mb-3 mt-5 border-b border-gray-800 pb-1">
+            <h2 style={{ fontSize: 20, fontWeight: 400, color: "var(--text-primary)", marginBottom: 12, marginTop: 20, paddingBottom: 6, borderBottom: "1px solid var(--border)", lineHeight: 1.3, letterSpacing: "-0.2px" }}>
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-lg font-semibold text-gray-100 mb-2 mt-4">
+            <h3 style={{ fontSize: 17, fontWeight: 500, color: "var(--text-primary)", marginBottom: 10, marginTop: 18, lineHeight: 1.4 }}>
               {children}
             </h3>
           ),
           h4: ({ children }) => (
-            <h4 className="text-base font-semibold text-gray-100 mb-2 mt-3">
+            <h4 style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)", marginBottom: 8, marginTop: 14, lineHeight: 1.4 }}>
               {children}
             </h4>
           ),
           p: ({ children }) => (
-            <p className="text-gray-300 mb-4 leading-relaxed">{children}</p>
+            <p style={{ color: "var(--text-secondary)", marginBottom: 16, lineHeight: 1.75, fontSize: 15 }}>
+              {children}
+            </p>
           ),
           a: ({ href, children }) => (
-            <a
-              href={href}
-              className="text-blue-400 hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <a href={href} style={{ color: "var(--text-link)", textDecoration: "underline", textUnderlineOffset: 3 }} target="_blank" rel="noopener noreferrer">
               {children}
             </a>
           ),
           ul: ({ children }) => (
-            <ul className="list-disc list-inside text-gray-300 mb-4 space-y-1 pl-2">
+            <ul style={{ color: "var(--text-secondary)", marginBottom: 16, paddingLeft: 20, listStyleType: "disc", fontSize: 15, lineHeight: 1.7 }}>
               {children}
             </ul>
           ),
           ol: ({ children }) => (
-            <ol className="list-decimal list-inside text-gray-300 mb-4 space-y-1 pl-2">
+            <ol style={{ color: "var(--text-secondary)", marginBottom: 16, paddingLeft: 20, listStyleType: "decimal", fontSize: 15, lineHeight: 1.7 }}>
               {children}
             </ol>
           ),
           li: ({ children }) => (
-            <li className="leading-relaxed">{children}</li>
+            <li style={{ marginBottom: 4, lineHeight: 1.7 }}>{children}</li>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-gray-600 pl-4 py-1 my-4 text-gray-400 italic bg-gray-800/50 rounded-r">
+            <blockquote style={{
+              borderLeft: "3px solid var(--border-strong)",
+              paddingLeft: 16, margin: "16px 0",
+              color: "var(--text-muted)", fontStyle: "italic",
+              background: "var(--surface-alt)", borderRadius: "0 6px 6px 0",
+              padding: "12px 16px",
+            }}>
               {children}
             </blockquote>
           ),
@@ -66,53 +69,61 @@ export default function MarkdownPreview({ content }: MarkdownPreviewProps) {
             const isInline = !className;
             if (isInline) {
               return (
-                <code className="bg-gray-800 text-gray-200 px-1.5 py-0.5 rounded text-sm font-mono">
+                <code style={{
+                  background: "var(--surface-alt)", color: "var(--text-secondary)",
+                  padding: "2px 6px", borderRadius: 4, fontSize: 13,
+                  fontFamily: "'Geist Mono', 'Courier New', monospace",
+                  border: "1px solid var(--border)",
+                }}>
                   {children}
                 </code>
               );
             }
             return (
-              <code className={`${className} font-mono text-sm`}>{children}</code>
+              <code style={{ fontFamily: "'Geist Mono', 'Courier New', monospace", fontSize: 13 }} className={className}>
+                {children}
+              </code>
             );
           },
           pre: ({ children }) => (
-            <pre className="bg-gray-800 rounded-lg p-4 mb-4 overflow-x-auto border border-gray-700">
+            <pre style={{
+              background: "var(--surface-alt)", borderRadius: 8, padding: "16px 20px",
+              marginBottom: 16, overflowX: "auto",
+              border: "1px solid var(--border)", fontSize: 13,
+              fontFamily: "'Geist Mono', 'Courier New', monospace",
+            }}>
               {children}
             </pre>
           ),
           table: ({ children }) => (
-            <div className="overflow-x-auto mb-4">
-              <table className="min-w-full border border-gray-700 rounded">
+            <div style={{ overflowX: "auto", marginBottom: 16 }}>
+              <table style={{ minWidth: "100%", borderCollapse: "collapse", border: "1px solid var(--border)", borderRadius: 8 }}>
                 {children}
               </table>
             </div>
           ),
           thead: ({ children }) => (
-            <thead className="bg-gray-800">{children}</thead>
+            <thead style={{ background: "var(--surface-alt)" }}>{children}</thead>
           ),
           th: ({ children }) => (
-            <th className="border border-gray-700 px-3 py-2 text-left text-sm font-semibold text-gray-200">
+            <th style={{ border: "1px solid var(--border)", padding: "8px 12px", textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--text-muted)", letterSpacing: "1px", textTransform: "uppercase" }}>
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="border border-gray-700 px-3 py-2 text-sm text-gray-300">
+            <td style={{ border: "1px solid var(--border)", padding: "8px 12px", fontSize: 14, color: "var(--text-secondary)" }}>
               {children}
             </td>
           ),
-          hr: () => <hr className="border-gray-700 my-6" />,
+          hr: () => <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "24px 0" }} />,
           img: ({ src, alt }) => (
-            <img
-              src={src}
-              alt={alt ?? ""}
-              className="max-w-full rounded-lg my-4 border border-gray-700"
-            />
+            <img src={src} alt={alt ?? ""} style={{ maxWidth: "100%", borderRadius: 8, margin: "12px 0", border: "1px solid var(--border)" }} />
           ),
           strong: ({ children }) => (
-            <strong className="font-bold text-gray-100">{children}</strong>
+            <strong style={{ fontWeight: 500, color: "var(--text-primary)" }}>{children}</strong>
           ),
           em: ({ children }) => (
-            <em className="italic text-gray-200">{children}</em>
+            <em style={{ fontStyle: "italic", color: "var(--text-secondary)" }}>{children}</em>
           ),
         }}
       >

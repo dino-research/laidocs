@@ -3,10 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useSidecar } from "../hooks/useSidecar";
 import { apiPost } from "../lib/sidecar";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 interface SearchResult {
   doc_id: string;
   title: string;
@@ -15,10 +11,6 @@ interface SearchResult {
   score: number;
   highlights: string[];
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -29,60 +21,31 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced;
 }
 
+const IconSearch = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8"/>
+    <path d="m21 21-4.3-4.3"/>
+  </svg>
+);
+
+const IconFolder = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+  </svg>
+);
+
 function HighlightedSnippet({ snippet }: { snippet: string }) {
-  // Backend wraps matches in <b>…</b> tags
   return (
     <p
-      className="text-sm text-gray-400 leading-relaxed line-clamp-3"
+      style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", margin: 0 }}
       dangerouslySetInnerHTML={{ __html: snippet }}
     />
   );
 }
 
-function FolderBadge({ folder }: { folder: string }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-400 border border-blue-500/20">
-      <span>📁</span>
-      {folder || "unsorted"}
-    </span>
-  );
+function Spinner() {
+  return <div style={{ width: 16, height: 16, border: "2px solid var(--border)", borderTopColor: "var(--text-muted)", borderRadius: "50%" }} className="spin" />;
 }
-
-// ---------------------------------------------------------------------------
-// SearchResultCard
-// ---------------------------------------------------------------------------
-
-function SearchResultCard({
-  result,
-  onClick,
-}: {
-  result: SearchResult;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full text-left rounded-xl border border-white/5 bg-white/3 p-4 transition-all duration-200 hover:bg-white/8 hover:border-blue-500/40 hover:shadow-lg hover:shadow-blue-500/5 group"
-    >
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <h3 className="font-semibold text-white group-hover:text-blue-400 transition-colors line-clamp-1">
-          {result.title || "Untitled"}
-        </h3>
-        <span className="shrink-0 text-xs text-gray-600 tabular-nums mt-0.5">
-          {(result.score * 100).toFixed(0)}%
-        </span>
-      </div>
-      <div className="mb-2">
-        <FolderBadge folder={result.folder} />
-      </div>
-      <HighlightedSnippet snippet={result.snippet} />
-    </button>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 
 export default function Search() {
   const { status } = useSidecar();
@@ -97,69 +60,42 @@ export default function Search() {
   const debouncedQuery = useDebounce(query, 350);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Run search whenever debounced query changes
   useEffect(() => {
     if (!debouncedQuery.trim() || status !== "ready") {
-      setResults([]);
-      setSearched(false);
-      return;
+      setResults([]); setSearched(false); return;
     }
-
-    // Cancel any in-flight request
     abortRef.current?.abort();
     abortRef.current = new AbortController();
-
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
 
     apiPost<SearchResult[]>("/api/search/", { query: debouncedQuery, top_k: 15 })
-      .then((data) => {
-        setResults(data);
-        setSearched(true);
-      })
-      .catch((err) => {
-        if (err?.name !== "AbortError") {
-          setError(String(err));
-        }
-      })
+      .then((data) => { setResults(data); setSearched(true); })
+      .catch((err) => { if (err?.name !== "AbortError") setError(String(err)); })
       .finally(() => setLoading(false));
   }, [debouncedQuery, status]);
 
-  // ── Loading state ──────────────────────────────────────────────────
   if (status !== "ready") {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center">
-          <div className="mb-3 text-3xl animate-pulse">⏳</div>
-          <p className="text-sm text-gray-400">Connecting to backend…</p>
-        </div>
+      <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <Spinner />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* ── Header ───────────────────────────────────────────────── */}
-      <div className="px-8 pt-8 pb-6 border-b border-white/5">
-        <h1 className="text-2xl font-bold text-white mb-5">Search</h1>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Header */}
+      <div style={{ padding: "32px 40px 24px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+        <h1 className="heading-display" style={{ margin: "0 0 20px" }}>Search</h1>
 
-        {/* Search input */}
-        <div className="relative">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 pointer-events-none"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.3-4.3" />
-          </svg>
+        <div style={{ position: "relative" }}>
+          <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)", pointerEvents: "none" }}>
+            <IconSearch />
+          </span>
           {loading && (
-            <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
-              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            </div>
+            <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)" }}>
+              <Spinner />
+            </span>
           )}
           <input
             id="search-input"
@@ -168,56 +104,72 @@ export default function Search() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search your documents…"
             autoFocus
-            className="w-full rounded-xl border border-white/10 bg-white/5 py-3 pl-10 pr-10 text-sm text-gray-100 placeholder-gray-500 outline-none transition-all focus:border-blue-500/60 focus:bg-white/8 focus:ring-1 focus:ring-blue-500/40"
+            className="warp-input"
+            style={{ paddingLeft: 44, paddingRight: 44, fontSize: 15, paddingTop: 12, paddingBottom: 12 }}
           />
         </div>
 
-        {/* Result count */}
         {searched && !loading && (
-          <p className="mt-3 text-xs text-gray-500">
-            {results.length === 0
-              ? "No results found"
-              : `${results.length} result${results.length !== 1 ? "s" : ""}`}
+          <p className="label-upper" style={{ marginTop: 12 }}>
+            {results.length === 0 ? "No results" : `${results.length} result${results.length !== 1 ? "s" : ""}`}
           </p>
         )}
       </div>
 
-      {/* ── Results ───────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-8 py-6">
+      {/* Results */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "24px 40px" }}>
         {error && (
-          <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <div style={{ marginBottom: 16, padding: "12px 16px", background: "rgba(192,112,112,0.1)", border: "1px solid rgba(192,112,112,0.3)", borderRadius: 8, fontSize: 13, color: "var(--error)" }}>
             {error}
           </div>
         )}
 
         {!query.trim() && (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="text-5xl mb-4 opacity-60">🔍</div>
-            <p className="text-gray-300 font-medium">Start typing to search</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Searches titles and content across all your documents
-            </p>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingTop: 80, textAlign: "center" }}>
+            <div style={{ color: "var(--text-muted)", opacity: 0.4, marginBottom: 16 }}>
+              <IconSearch />
+            </div>
+            <p style={{ fontSize: 15, color: "var(--text-secondary)", margin: "0 0 6px" }}>Start typing to search</p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Searches titles and content across all your documents</p>
           </div>
         )}
 
         {searched && results.length === 0 && !loading && (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="text-5xl mb-4 opacity-60">😶</div>
-            <p className="text-gray-300 font-medium">Nothing found for "{query}"</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Try different keywords or upload more documents
-            </p>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", paddingTop: 80, textAlign: "center" }}>
+            <p style={{ fontSize: 15, color: "var(--text-secondary)", margin: "0 0 6px" }}>Nothing found for "{query}"</p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Try different keywords or upload more documents</p>
           </div>
         )}
 
         {results.length > 0 && (
-          <div className="space-y-3">
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {results.map((result) => (
-              <SearchResultCard
+              <button
                 key={result.doc_id}
-                result={result}
                 onClick={() => navigate(`/doc/${result.doc_id}`)}
-              />
+                className="warp-card"
+                style={{
+                  width: "100%", textAlign: "left", cursor: "pointer",
+                  padding: "16px 20px", border: "1px solid var(--border)",
+                  background: "none",
+                  display: "block",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)", margin: 0, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {result.title || "Untitled"}
+                  </h3>
+                  <span className="label-upper" style={{ flexShrink: 0, marginTop: 2 }}>
+                    {(result.score * 100).toFixed(0)}%
+                  </span>
+                </div>
+                {result.folder && (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)", background: "var(--surface-alt)", borderRadius: 4, padding: "2px 7px", letterSpacing: "0.5px", marginBottom: 8 }}>
+                    <IconFolder /> {result.folder}
+                  </span>
+                )}
+                <HighlightedSnippet snippet={result.snippet} />
+              </button>
             ))}
           </div>
         )}

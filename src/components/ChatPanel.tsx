@@ -2,10 +2,6 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { streamChat } from "../lib/sidecar";
 import MarkdownPreview from "./MarkdownPreview";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 interface Message {
   id: string;
   role: "user" | "assistant";
@@ -13,42 +9,69 @@ interface Message {
   streaming?: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Message bubble
-// ---------------------------------------------------------------------------
+const IconTrash = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6"/>
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+    <path d="M10 11v6"/><path d="M14 11v6"/>
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+  </svg>
+);
+
+const IconX = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <line x1="18" y1="6" x2="6" y2="18"/>
+    <line x1="6" y1="6" x2="18" y2="18"/>
+  </svg>
+);
+
+const IconSend = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="22" y1="2" x2="11" y2="13"/>
+    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+  </svg>
+);
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
   return (
-    <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
+    <div style={{ display: "flex", gap: 10, flexDirection: isUser ? "row-reverse" : "row" }}>
       {/* Avatar */}
-      <div
-        className={`shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-          isUser
-            ? "bg-blue-600 text-white"
-            : "bg-gradient-to-br from-purple-600 to-blue-600 text-white"
-        }`}
-      >
-        {isUser ? "U" : "AI"}
+      <div style={{
+        flexShrink: 0, width: 28, height: 28, borderRadius: "50%",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 10, fontWeight: 500, letterSpacing: "0.5px",
+        background: isUser ? "var(--btn-bg)" : "var(--surface-alt)",
+        color: "var(--text-secondary)",
+        border: "1px solid var(--border)",
+      }}>
+        {isUser ? "You" : "AI"}
       </div>
 
       {/* Bubble */}
-      <div
-        className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
-          isUser
-            ? "bg-blue-600 text-white rounded-tr-sm"
-            : "bg-white/5 border border-white/8 text-gray-200 rounded-tl-sm"
-        }`}
-      >
+      <div style={{
+        maxWidth: "78%",
+        borderRadius: isUser ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
+        padding: "10px 14px",
+        fontSize: 13,
+        lineHeight: 1.6,
+        background: isUser ? "var(--btn-bg)" : "var(--surface-alt)",
+        color: isUser ? "var(--text-primary)" : "var(--text-secondary)",
+        border: "1px solid var(--border)",
+      }}>
         {isUser ? (
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{message.content}</p>
         ) : message.streaming ? (
-          <div className="prose prose-sm prose-invert max-w-none">
-            <p className="whitespace-pre-wrap">{message.content}</p>
-            <span className="inline-block w-1.5 h-4 bg-blue-400 animate-pulse ml-0.5 align-middle" />
+          <div>
+            <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{message.content}</p>
+            <span style={{
+              display: "inline-block", width: 6, height: 13,
+              background: "var(--text-muted)", verticalAlign: "middle",
+              marginLeft: 2,
+            }} className="pulse" />
           </div>
         ) : (
-          <div className="prose prose-sm prose-invert max-w-none">
+          <div style={{ fontSize: 13 }}>
             <MarkdownPreview content={message.content} />
           </div>
         )}
@@ -56,10 +79,6 @@ function MessageBubble({ message }: { message: Message }) {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// ChatPanel
-// ---------------------------------------------------------------------------
 
 interface ChatPanelProps {
   docId: string;
@@ -74,44 +93,27 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll to bottom on new messages
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // Focus input on mount
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   const sendMessage = useCallback(async () => {
     const question = input.trim();
     if (!question || streaming) return;
-
     setInput("");
     setError(null);
 
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: question,
-    };
-    const assistantMsg: Message = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content: "",
-      streaming: true,
-    };
-
+    const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: question };
+    const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", content: "", streaming: true };
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setStreaming(true);
 
     try {
       await streamChat(docId, question, (token) => {
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMsg.id ? { ...m, content: m.content + token } : m,
-          ),
+          prev.map((m) => m.id === assistantMsg.id ? { ...m, content: m.content + token } : m)
         );
       });
     } catch (err) {
@@ -119,109 +121,99 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
       setMessages((prev) => prev.filter((m) => m.id !== assistantMsg.id));
     } finally {
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMsg.id ? { ...m, streaming: false } : m,
-        ),
+        prev.map((m) => m.id === assistantMsg.id ? { ...m, streaming: false } : m)
       );
       setStreaming(false);
     }
   }, [docId, input, streaming]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
-  const clearHistory = () => {
-    setMessages([]);
-    setError(null);
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
   return (
-    <div className="flex flex-col h-full border-l border-white/8 bg-gray-950">
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/8">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-          <span className="text-sm font-semibold text-white">Chat with Document</span>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--surface)" }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "12px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)" }} className="pulse" />
+          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", letterSpacing: "0" }}>
+            Chat with Document
+          </span>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={clearHistory}
-            title="Clear conversation"
-            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
+        <div style={{ display: "flex", gap: 4 }}>
+          <button onClick={() => { setMessages([]); setError(null); }} title="Clear conversation" className="btn-icon">
+            <IconTrash />
           </button>
-          <button
-            onClick={onClose}
-            title="Close chat"
-            className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+          <button onClick={onClose} title="Close chat" className="btn-icon">
+            <IconX />
           </button>
         </div>
       </div>
 
-      {/* ── Messages ─────────────────────────────────────────── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      {/* Messages */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: 16 }}>
         {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center py-12">
-            <div className="text-4xl mb-3 opacity-60">💬</div>
-            <p className="text-sm font-medium text-gray-400">Ask anything about this document</p>
-            <p className="mt-1 text-xs text-gray-600">
-              The AI will answer using only the document content
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", padding: "32px 16px" }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-muted)", opacity: 0.5, marginBottom: 12 }}>
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-muted)", margin: "0 0 6px" }}>Ask anything about this document</p>
+            <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0, opacity: 0.7 }}>
+              Answers are grounded in this document only
             </p>
           </div>
         )}
 
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
-        ))}
+        {messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)}
 
         {error && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-xs text-red-400">
+          <div style={{ padding: "10px 14px", borderRadius: 8, border: "1px solid rgba(192,112,112,0.3)", background: "rgba(192,112,112,0.08)", fontSize: 12, color: "var(--error)" }}>
             {error}
           </div>
         )}
       </div>
 
-      {/* ── Input ─────────────────────────────────────────────── */}
-      <div className="px-4 py-3 border-t border-white/8">
-        <div className="flex items-end gap-2">
+      {/* Input */}
+      <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
           <textarea
             ref={inputRef}
             id="chat-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask a question… (Enter to send, Shift+Enter for newline)"
+            placeholder="Ask a question… (Enter to send)"
             rows={2}
             disabled={streaming}
-            className="flex-1 resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-gray-100 placeholder-gray-500 outline-none transition-all focus:border-blue-500/60 focus:bg-white/8 focus:ring-1 focus:ring-blue-500/40 disabled:opacity-50"
+            className="warp-input"
+            style={{ flex: 1, resize: "none", fontFamily: "inherit" }}
           />
           <button
             id="chat-send-btn"
             onClick={sendMessage}
             disabled={!input.trim() || streaming}
-            className="shrink-0 flex items-center justify-center w-9 h-9 rounded-xl bg-blue-600 text-white transition-all hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              flexShrink: 0, width: 36, height: 36,
+              borderRadius: "var(--radius-pill)",
+              background: "var(--btn-bg)", border: "none",
+              color: "var(--text-secondary)", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "opacity 0.2s", opacity: (!input.trim() || streaming) ? 0.35 : 1,
+            }}
           >
-            {streaming ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
-            )}
+            {streaming
+              ? <div style={{ width: 14, height: 14, border: "2px solid var(--border)", borderTopColor: "var(--text-muted)", borderRadius: "50%" }} className="spin" />
+              : <IconSend />
+            }
           </button>
         </div>
-        <p className="mt-1.5 text-xs text-gray-600">Answers are grounded in this document only</p>
+        <p style={{ fontSize: 10, color: "var(--text-muted)", margin: "6px 0 0", letterSpacing: "1px", textTransform: "uppercase" }}>
+          Grounded in this document only
+        </p>
       </div>
     </div>
   );

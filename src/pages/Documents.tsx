@@ -18,19 +18,77 @@ interface Document {
 
 function relativeTime(dateStr: string): string {
   const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
+  const diffMs = Date.now() - date.getTime();
   const diffSec = Math.floor(diffMs / 1000);
   const diffMin = Math.floor(diffSec / 60);
   const diffHr = Math.floor(diffMin / 60);
   const diffDay = Math.floor(diffHr / 24);
-
   if (diffSec < 60) return "just now";
   if (diffMin < 60) return `${diffMin}m ago`;
   if (diffHr < 24) return `${diffHr}h ago`;
   if (diffDay < 30) return `${diffDay}d ago`;
-
   return date.toLocaleDateString();
+}
+
+// ── SVG Icons ────────────────────────────────────────────────────
+const IconUpload = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="16 16 12 12 8 16"/>
+    <line x1="12" y1="12" x2="12" y2="21"/>
+    <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+  </svg>
+);
+
+const IconGlobe = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <line x1="2" y1="12" x2="22" y2="12"/>
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+  </svg>
+);
+
+const IconFile = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+    <polyline points="13 2 13 9 20 9"/>
+  </svg>
+);
+
+const IconTrash = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6"/>
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+    <path d="M10 11v6"/>
+    <path d="M14 11v6"/>
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+  </svg>
+);
+
+const IconFolder = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+  </svg>
+);
+
+// ── Loading spinner ───────────────────────────────────────────────
+function Spinner() {
+  return (
+    <div style={{
+      width: 20, height: 20,
+      border: "2px solid var(--border)",
+      borderTopColor: "var(--text-muted)",
+      borderRadius: "50%",
+    }} className="spin" />
+  );
+}
+
+// ── Full-screen status ────────────────────────────────────────────
+function StatusScreen({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center" }}>
+      <div style={{ textAlign: "center" }}>{children}</div>
+    </div>
+  );
 }
 
 export default function Documents() {
@@ -75,198 +133,194 @@ export default function Documents() {
     }
   };
 
-  // Sidecar not ready states
+  // ── States ───────────────────────────────────────────────────
   if (status === "starting") {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center">
-          <div className="mb-3 text-2xl animate-pulse">⏳</div>
-          <p className="text-sm text-gray-400">Connecting to backend…</p>
-        </div>
-      </div>
+      <StatusScreen>
+        <Spinner />
+        <p style={{ marginTop: 16, fontSize: 14, color: "var(--text-muted)" }}>Connecting to backend…</p>
+      </StatusScreen>
     );
   }
 
   if (status === "error") {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center">
-          <div className="mb-3 text-2xl">⚠️</div>
-          <p className="text-sm text-red-400">Failed to connect to backend.</p>
-          {error && <p className="mt-1 text-xs text-gray-500">{error}</p>}
-        </div>
-      </div>
+      <StatusScreen>
+        <p style={{ fontSize: 14, color: "var(--error)" }}>Failed to connect to backend.</p>
+        {error && <p style={{ marginTop: 4, fontSize: 12, color: "var(--text-muted)" }}>{error}</p>}
+      </StatusScreen>
     );
   }
 
   return (
-    <div className="p-6 h-full flex flex-col">
-      {/* Header with actions */}
-      <div className="flex items-center justify-between mb-6">
+    <div style={{ padding: "32px 40px", height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 32 }}>
         <div>
-          <h1 className="text-2xl font-bold text-white">
-            {activeFolder ? (
-              <span className="flex items-center gap-2">
-                📁 <span className="truncate max-w-xs">{activeFolder}</span>
-              </span>
-            ) : (
-              "Documents"
-            )}
+          <h1 className="heading-display" style={{ margin: 0 }}>
+            {activeFolder ? activeFolder : "Documents"}
           </h1>
           {documents.length > 0 && (
-            <p className="mt-1 text-sm text-gray-500">{documents.length} document{documents.length !== 1 ? "s" : ""}</p>
+            <p className="label-upper" style={{ marginTop: 8 }}>
+              {documents.length} document{documents.length !== 1 ? "s" : ""}
+            </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setUploadOpen(true)}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-          >
-            📤 Upload File
+        <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+          <button onClick={() => setUploadOpen(true)} className="btn-primary">
+            <IconUpload /> Upload
           </button>
-          <button
-            onClick={() => setCrawlOpen(true)}
-            className="rounded-md bg-gray-700 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-600 hover:text-white"
-          >
-            🌐 Crawl URL
+          <button onClick={() => setCrawlOpen(true)} className="btn-ghost">
+            <IconGlobe /> Crawl URL
           </button>
         </div>
       </div>
 
-      {/* Error state */}
+      {/* Error */}
       {fetchError && (
-        <div className="mb-4 rounded-md bg-red-900/30 border border-red-800 p-3 text-sm text-red-300">
+        <div style={{
+          marginBottom: 20,
+          padding: "12px 16px",
+          background: "rgba(192, 112, 112, 0.1)",
+          border: "1px solid rgba(192, 112, 112, 0.3)",
+          borderRadius: 8,
+          fontSize: 13,
+          color: "var(--error)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}>
           {fetchError}
-          <button
-            onClick={fetchDocuments}
-            className="ml-2 underline hover:text-red-200"
-          >
+          <button onClick={fetchDocuments} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", fontSize: 12, textDecoration: "underline" }}>
             Retry
           </button>
         </div>
       )}
 
-      {/* Loading state */}
+      {/* Loading */}
       {loading && (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="mb-3 text-2xl animate-pulse">⏳</div>
-            <p className="text-sm text-gray-400">Loading documents…</p>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+            <Spinner />
+            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Loading documents…</p>
           </div>
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty */}
       {!loading && documents.length === 0 && !fetchError && (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="rounded-lg border border-dashed border-gray-700 py-16 text-center max-w-md">
-            <p className="text-4xl mb-3">📂</p>
-            <p className="text-gray-300 font-medium">No documents yet</p>
-            <p className="mt-1 text-sm text-gray-500">
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{
+            textAlign: "center",
+            border: "1px dashed var(--border-strong)",
+            borderRadius: 14,
+            padding: "56px 48px",
+            maxWidth: 400,
+          }}>
+            <div style={{ width: 40, height: 40, margin: "0 auto 16px", color: "var(--text-muted)", opacity: 0.5 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <p style={{ fontSize: 16, fontWeight: 400, color: "var(--text-secondary)", margin: "0 0 6px" }}>No documents yet</p>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 24px" }}>
               Upload a file or crawl a URL to get started.
             </p>
-            <div className="mt-6 flex items-center justify-center gap-3">
-              <button
-                onClick={() => setUploadOpen(true)}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-              >
-                📤 Upload File
-              </button>
-              <button
-                onClick={() => setCrawlOpen(true)}
-                className="rounded-md bg-gray-700 px-4 py-2 text-sm font-medium text-gray-300 transition-colors hover:bg-gray-600 hover:text-white"
-              >
-                🌐 Crawl URL
-              </button>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <button onClick={() => setUploadOpen(true)} className="btn-primary"><IconUpload /> Upload</button>
+              <button onClick={() => setCrawlOpen(true)} className="btn-ghost"><IconGlobe /> Crawl URL</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Document grid */}
+      {/* Document Grid */}
       {!loading && documents.length > 0 && (
-        <div className="flex-1 overflow-auto">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <div style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+          }}>
             {documents.map((doc) => (
               <div
                 key={doc.id}
-                className="group relative rounded-lg border border-gray-800 bg-gray-900 p-4 transition-colors hover:border-gray-700 hover:bg-gray-800/50 cursor-pointer"
+                className="warp-card"
+                style={{ cursor: "pointer", position: "relative", padding: "18px 18px 14px" }}
                 onClick={() => navigate(`/doc/${doc.id}`)}
               >
                 {/* Delete button */}
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteConfirm(doc.id);
-                  }}
-                  className="absolute right-2 top-2 rounded-md p-1 text-gray-600 opacity-0 transition-all group-hover:opacity-100 hover:bg-gray-700 hover:text-red-400"
+                  onClick={(e) => { e.stopPropagation(); setDeleteConfirm(doc.id); }}
+                  className="btn-icon"
                   title="Delete"
+                  style={{
+                    position: "absolute", top: 10, right: 10,
+                    opacity: 0, transition: "opacity 0.15s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
+                  <IconTrash />
                 </button>
 
-                {/* Delete confirmation overlay */}
+                {/* Delete confirm overlay */}
                 {deleteConfirm === doc.id && (
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute inset-0 flex items-center justify-center rounded-lg bg-gray-950/90 z-10"
+                    style={{
+                      position: "absolute", inset: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: "rgba(26, 25, 23, 0.92)",
+                      borderRadius: "var(--radius-card)",
+                      zIndex: 10,
+                    }}
                   >
-                    <div className="text-center p-4">
-                      <p className="text-sm text-white mb-3">Delete this document?</p>
-                      <div className="flex gap-2 justify-center">
+                    <div style={{ textAlign: "center" }}>
+                      <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>Delete this document?</p>
+                      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(doc.id);
-                          }}
-                          className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
-                        >
-                          Delete
-                        </button>
+                          onClick={(e) => { e.stopPropagation(); handleDelete(doc.id); }}
+                          style={{ fontSize: 12, padding: "6px 14px", borderRadius: "var(--radius-pill)", background: "var(--error)", color: "var(--text-primary)", border: "none", cursor: "pointer" }}
+                        >Delete</button>
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteConfirm(null);
-                          }}
-                          className="rounded-md bg-gray-700 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-600"
-                        >
-                          Cancel
-                        </button>
+                          onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }}
+                          style={{ fontSize: 12, padding: "6px 14px", borderRadius: "var(--radius-pill)", background: "var(--surface-alt)", color: "var(--text-muted)", border: "1px solid var(--border)", cursor: "pointer" }}
+                        >Cancel</button>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Source icon + Title */}
-                <div className="flex items-start gap-2 mb-2 pr-6">
-                  <span className="text-lg mt-0.5 flex-shrink-0">
-                    {doc.source_type === "url" ? "🌐" : "📎"}
+                {/* Source + Title */}
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 8, paddingRight: 20 }}>
+                  <span style={{ color: "var(--text-muted)", marginTop: 1, flexShrink: 0 }}>
+                    {doc.source_type === "url" ? <IconGlobe /> : <IconFile />}
                   </span>
-                  <h3 className="text-sm font-medium text-white leading-snug line-clamp-2">
+                  <h3 style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: 0, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                     {doc.title || "Untitled"}
                   </h3>
                 </div>
 
                 {/* Content preview */}
                 {doc.content && (
-                  <p className="mb-3 text-xs text-gray-500 line-clamp-3 leading-relaxed">
-                    {doc.content.substring(0, 100)}
-                    {doc.content.length > 100 ? "…" : ""}
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px", lineHeight: 1.6, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                    {doc.content.substring(0, 140)}{doc.content.length > 140 ? "…" : ""}
                   </p>
                 )}
 
-                {/* Meta row */}
-                <div className="flex items-center justify-between text-xs text-gray-600">
-                  <span className="flex items-center gap-1">
+                {/* Footer row */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span>
                     {doc.folder && (
-                      <span className="rounded bg-gray-800 px-1.5 py-0.5 text-gray-500">
-                        {doc.folder}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)", background: "var(--surface-alt)", borderRadius: 4, padding: "2px 7px", letterSpacing: "0.5px" }}>
+                        <IconFolder />{doc.folder}
                       </span>
                     )}
                   </span>
-                  <span>{relativeTime(doc.created_at)}</span>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "1px", textTransform: "uppercase" }}>
+                    {relativeTime(doc.created_at)}
+                  </span>
                 </div>
               </div>
             ))}
@@ -274,22 +328,15 @@ export default function Documents() {
         </div>
       )}
 
-      {/* Dialogs */}
       <UploadDialog
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
-        onUploadSuccess={() => {
-          fetchDocuments();
-          triggerRefreshFolders();
-        }}
+        onUploadSuccess={() => { fetchDocuments(); triggerRefreshFolders(); }}
       />
       <CrawlDialog
         open={crawlOpen}
         onClose={() => setCrawlOpen(false)}
-        onCrawlSuccess={() => {
-          fetchDocuments();
-          triggerRefreshFolders();
-        }}
+        onCrawlSuccess={() => { fetchDocuments(); triggerRefreshFolders(); }}
       />
     </div>
   );
