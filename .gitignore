@@ -35,3 +35,4 @@ Thumbs.db
 
 # Compiled sidecar binaries
 src-tauri/bin/api/main-*
+.agent/

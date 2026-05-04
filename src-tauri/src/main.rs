@@ -3,6 +3,7 @@
 
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
+use tauri_plugin_shell::ShellExt;
 
 /// Sidecar lifecycle manager state.
 /// Holds the child process handle for graceful stdin-based shutdown.
@@ -21,20 +22,30 @@ struct SidecarState {
 /// Tauri events (`sidecar-stdout`, `sidecar-stderr`, `sidecar-exit`) so the
 /// frontend can react in real time.
 fn spawn_sidecar(app: &tauri::AppHandle) -> Result<(), String> {
-    use tauri_plugin_shell::process::{Command, CommandEvent};
+    use tauri_plugin_shell::process::CommandEvent;
 
     let (mut rx, child) = if cfg!(debug_assertions) {
         // Dev: run the Python backend directly.
         // The current working directory of a Tauri dev process is src-tauri/,
         // so we go up one level to reach the project root where backend/ lives.
-        Command::new("python3")
+        app.shell()
+            .command("python3")
             .args(["backend/main.py", "--dev"])
-            .current_dir(std::env::current_dir().unwrap_or_default().parent().unwrap().parent().unwrap_or(std::path::Path::new(".")))
+            .current_dir(
+                std::env::current_dir()
+                    .unwrap_or_default()
+                    .parent()
+                    .unwrap()
+                    .parent()
+                    .unwrap_or(std::path::Path::new(".")),
+            )
             .spawn()
             .map_err(|e| format!("Failed to spawn dev sidecar: {}", e))?
     } else {
         // Release: use the bundled sidecar binary.
-        Command::new_sidecar("bin/api/main")
+        app.shell()
+            .sidecar("bin/api/main")
+            .map_err(|e| format!("Failed to create sidecar command: {}", e))?
             .spawn()
             .map_err(|e| format!("Failed to spawn release sidecar: {}", e))?
     };
@@ -43,39 +54,41 @@ fn spawn_sidecar(app: &tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<SidecarState>();
     *state.child.lock().unwrap() = Some(child);
 
-    // Spawn a thread to forward sidecar output as Tauri events.
+    // Spawn an async task to forward sidecar output as Tauri events.
+    // rx.recv() is async (tauri::async_runtime / tokio channel), so we must
+    // run this inside tauri::async_runtime::spawn, not std::thread::spawn.
     let app_handle = app.clone();
-    std::thread::spawn(move || {
-        loop {
-            match rx.recv() {
-                Some(CommandEvent::Stdout(line)) => {
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
                     let _ = app_handle.emit("sidecar-stdout", &line);
                 }
-                Some(CommandEvent::Stderr(line)) => {
+                CommandEvent::Stderr(line) => {
                     let _ = app_handle.emit("sidecar-stderr", &line);
                 }
-                Some(CommandEvent::Terminated(status)) => {
-                    let code = status.code();
+                CommandEvent::Terminated(status) => {
+                    // .code is a pub field (Option<i32>), not a method.
+                    let code = status.code;
                     let _ = app_handle.emit("sidecar-exit", serde_json::json!({
                         "code": code,
                         "success": code == Some(0),
                     }));
                     break;
                 }
-                Some(CommandEvent::Error(err)) => {
+                CommandEvent::Error(err) => {
                     let _ = app_handle.emit("sidecar-stderr", format!("[sidecar-error] {}", err));
                     break;
                 }
-                None => {
-                    // Receiver closed — child is gone.
-                    let _ = app_handle.emit("sidecar-exit", serde_json::json!({
-                        "code": null,
-                        "success": false,
-                    }));
-                    break;
-                }
+                // Ignore other variants (e.g. DragDrop, etc.)
+                _ => {}
             }
         }
+        // Channel closed — emit exit event.
+        let _ = app_handle.emit("sidecar-exit", serde_json::json!({
+            "code": null,
+            "success": false,
+        }));
     });
 
     Ok(())
@@ -126,13 +139,12 @@ fn stop_sidecar(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn ping_sidecar() -> Result<serde_json::Value, String> {
     let resp = ureq::get("http://localhost:8000/api/health")
-        .timeout_read(5_000)
-        .timeout_write(5_000)
+        .timeout(std::time::Duration::from_secs(5))
         .call()
         .map_err(|e| format!("Health check failed: {}", e))?;
 
     let body: serde_json::Value = resp
-        .into_json()
+        .into_json::<serde_json::Value>()
         .map_err(|e| format!("Failed to parse health response: {}", e))?;
 
     Ok(body)
@@ -148,6 +160,12 @@ fn main() {
         .manage(SidecarState {
             child: Arc::new(Mutex::new(None)),
         })
+        // Hook into window-close events at the builder level (correct Tauri v2 API).
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let _ = shutdown_sidecar(&window.app_handle());
+            }
+        })
         .setup(|app| {
             // Auto-start the sidecar when the application launches.
             let handle = app.handle().clone();
@@ -155,16 +173,6 @@ fn main() {
                 eprintln!("[LAIDocs] sidecar auto-start failed: {}", e);
                 // Don't panic — the frontend can retry via `start_sidecar` command.
             }
-
-            // Listen for the global "app-close-requested" event so we can
-            // shut down the sidecar before the process exits.
-            // We also hook into window-close events as a safety net.
-            let close_handle = app.handle().clone();
-            app.on_window_event(move |_window, event| {
-                if let tauri::WindowEvent::CloseRequested { .. } = event {
-                    let _ = shutdown_sidecar(&close_handle);
-                }
-            });
 
             Ok(())
         })
