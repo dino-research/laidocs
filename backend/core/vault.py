@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from backend.core.config import LAIDOCS_HOME
+from .config import LAIDOCS_HOME
 
 VAULT_DIR = LAIDOCS_HOME / "vault"
 

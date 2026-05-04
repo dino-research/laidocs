@@ -1,7 +1,7 @@
 """LAIDocs API — all routers."""
 
-from backend.api.settings import router as settings_router
-from backend.api.documents import (
+from .settings import router as settings_router
+from .documents import (
     documents_router,
     folders_router,
     search_router,

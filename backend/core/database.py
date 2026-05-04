@@ -9,7 +9,7 @@ from typing import Generator
 
 from fastapi import Depends
 
-from backend.core.config import LAIDOCS_HOME
+from .config import LAIDOCS_HOME
 
 DB_PATH = LAIDOCS_HOME / "data" / "laidocs.db"
 

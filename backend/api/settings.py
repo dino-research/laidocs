@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from openai import OpenAI
 from pydantic import BaseModel
 
-from backend.core.config import get_settings, reload_settings
+from ..core.config import get_settings, reload_settings
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
