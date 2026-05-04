@@ -361,6 +361,7 @@ export default function Documents() {
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         onUploadSuccess={() => { fetchDocuments(); triggerRefreshFolders(); }}
+        initialFolder={activeFolder}
       />
       <CrawlDialog
         open={crawlOpen}

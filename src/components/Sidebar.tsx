@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { apiGet, apiPost } from "../lib/sidecar";
 import { useFolderContext } from "../context/FolderContext";
+import { useSidecar } from "../hooks/useSidecar";
 
 interface Folder {
   path: string;
@@ -91,10 +92,60 @@ function NavItem({
   );
 }
 
+const IconRefresh = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="23 4 23 10 17 10"/>
+    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+  </svg>
+);
+
+function ReloadButton() {
+  const [spinning, setSpinning] = useState(false);
+
+  const handleReload = () => {
+    setSpinning(true);
+    setTimeout(() => window.location.reload(), 300);
+  };
+
+  return (
+    <button
+      onClick={handleReload}
+      title="Reload app"
+      style={{
+        flexShrink: 0,
+        width: 28,
+        height: 28,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 7,
+        border: "none",
+        background: "transparent",
+        color: "var(--text-faint)",
+        cursor: "pointer",
+        transition: "color 0.15s, background 0.15s",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.color = "var(--text-muted)";
+        e.currentTarget.style.background = "var(--surface-alt)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = "var(--text-faint)";
+        e.currentTarget.style.background = "transparent";
+      }}
+    >
+      <span className={spinning ? "spin" : ""} style={{ display: "flex" }}>
+        <IconRefresh />
+      </span>
+    </button>
+  );
+}
+
 // ── Sidebar ────────────────────────────────────────────────────────
 export default function Sidebar() {
   const { activeFolder, setActiveFolder, refreshFoldersKey, triggerRefreshFolders } =
     useFolderContext();
+  const { status } = useSidecar();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -112,7 +163,10 @@ export default function Sidebar() {
     }
   }, [refreshFoldersKey]);
 
-  useEffect(() => { fetchFolders(); }, [fetchFolders]);
+  useEffect(() => {
+    if (status !== "ready") return;
+    fetchFolders();
+  }, [status, fetchFolders]);
 
   const handleCreateFolder = async () => {
     const name = newFolderName.trim();
@@ -125,7 +179,12 @@ export default function Sidebar() {
       setShowNewFolder(false);
       triggerRefreshFolders();
     } catch (err) {
-      setNewFolderError(err instanceof Error ? err.message : "Failed to create folder");
+      const msg = err instanceof Error ? err.message : "Failed to create folder";
+      if (msg.includes("409")) {
+        setNewFolderError(`A folder named "${name}" already exists`);
+      } else {
+        setNewFolderError(msg);
+      }
     } finally {
       setCreating(false);
     }
@@ -314,12 +373,15 @@ export default function Sidebar() {
         </div>
       </nav>
 
-      {/* Settings */}
-      <div style={{ padding: "8px", borderTop: "1px solid var(--border)" }}>
-        <NavItem active={isSettingsPage} onClick={() => navigate("/settings")}>
-          <IconSettings />
-          Settings
-        </NavItem>
+      {/* Footer: Settings + Reload */}
+      <div style={{ padding: "8px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 4 }}>
+        <div style={{ flex: 1 }}>
+          <NavItem active={isSettingsPage} onClick={() => navigate("/settings")}>
+            <IconSettings />
+            Settings
+          </NavItem>
+        </div>
+        <ReloadButton />
       </div>
     </aside>
   );

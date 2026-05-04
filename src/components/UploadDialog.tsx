@@ -3,7 +3,7 @@ import { apiGet } from "../lib/sidecar";
 import { apiUpload } from "../lib/api-upload";
 
 interface Folder { path: string; name: string; document_count: number; }
-interface UploadDialogProps { open: boolean; onClose: () => void; onUploadSuccess: () => void; }
+interface UploadDialogProps { open: boolean; onClose: () => void; onUploadSuccess: () => void; initialFolder?: string | null; }
 
 const ACCEPTED_EXTENSIONS = ".pdf,.docx,.pptx,.xlsx,.md,.txt,.html,.csv";
 
@@ -28,7 +28,7 @@ const IconFile = () => (
   </svg>
 );
 
-export default function UploadDialog({ open, onClose, onUploadSuccess }: UploadDialogProps) {
+export default function UploadDialog({ open, onClose, onUploadSuccess, initialFolder }: UploadDialogProps) {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [selectedFolder, setSelectedFolder] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -41,8 +41,10 @@ export default function UploadDialog({ open, onClose, onUploadSuccess }: UploadD
   useEffect(() => {
     if (!open) return;
     apiGet<Folder[]>("/api/folders/").then(setFolders).catch(() => setFolders([]));
-    setSelectedFile(null); setSelectedFolder(""); setError(""); setSuccess(""); setDragOver(false);
-  }, [open]);
+    setSelectedFile(null);
+    setSelectedFolder(initialFolder || "");
+    setError(""); setSuccess(""); setDragOver(false);
+  }, [open, initialFolder]);
 
   if (!open) return null;
 
@@ -57,8 +59,8 @@ export default function UploadDialog({ open, onClose, onUploadSuccess }: UploadD
     setError(""); setSuccess(""); setUploading(true);
     try {
       await apiUpload("/api/documents/upload", selectedFile, selectedFolder);
-      setSuccess(`"${selectedFile.name}" uploaded successfully!`);
       onUploadSuccess();
+      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally { setUploading(false); }
