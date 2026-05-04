@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8008";
+export const API_BASE = "http://localhost:8008";
 
 // ── Generic HTTP helpers ───────────────────────────────────────────
 
