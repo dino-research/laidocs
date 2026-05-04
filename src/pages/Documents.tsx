@@ -32,7 +32,7 @@ function relativeTime(dateStr: string): string {
 
 // ── SVG Icons ────────────────────────────────────────────────────
 const IconUpload = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="16 16 12 12 8 16"/>
     <line x1="12" y1="12" x2="12" y2="21"/>
     <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
@@ -40,7 +40,7 @@ const IconUpload = () => (
 );
 
 const IconGlobe = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10"/>
     <line x1="2" y1="12" x2="22" y2="12"/>
     <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
@@ -48,24 +48,23 @@ const IconGlobe = () => (
 );
 
 const IconFile = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
     <polyline points="13 2 13 9 20 9"/>
   </svg>
 );
 
 const IconTrash = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="3 6 5 6 21 6"/>
     <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-    <path d="M10 11v6"/>
-    <path d="M14 11v6"/>
+    <path d="M10 11v6"/><path d="M14 11v6"/>
     <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
   </svg>
 );
 
 const IconFolder = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
   </svg>
 );
@@ -82,11 +81,32 @@ function Spinner() {
   );
 }
 
-// ── Full-screen status ────────────────────────────────────────────
+// ── Status page ────────────────────────────────────────────────────
 function StatusScreen({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center" }}>
       <div style={{ textAlign: "center" }}>{children}</div>
+    </div>
+  );
+}
+
+// ── Skeleton card ─────────────────────────────────────────────────
+function SkeletonCard() {
+  return (
+    <div className="warp-card" style={{ padding: "18px 18px 14px" }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 10 }}>
+        <div className="shimmer" style={{ width: 14, height: 14, borderRadius: 3, flexShrink: 0, marginTop: 2 }} />
+        <div style={{ flex: 1 }}>
+          <div className="shimmer" style={{ width: "75%", height: 13, marginBottom: 6 }} />
+          <div className="shimmer" style={{ width: "45%", height: 13 }} />
+        </div>
+      </div>
+      <div className="shimmer" style={{ width: "100%", height: 11, marginBottom: 5 }} />
+      <div className="shimmer" style={{ width: "80%", height: 11, marginBottom: 5 }} />
+      <div className="shimmer" style={{ width: "60%", height: 11, marginBottom: 14 }} />
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div className="shimmer" style={{ width: 50, height: 10, borderRadius: 3 }} />
+      </div>
     </div>
   );
 }
@@ -138,7 +158,7 @@ export default function Documents() {
     return (
       <StatusScreen>
         <Spinner />
-        <p style={{ marginTop: 16, fontSize: 14, color: "var(--text-muted)" }}>Connecting to backend…</p>
+        <p style={{ marginTop: 16, fontSize: 13, color: "var(--text-muted)" }}>Connecting to backend…</p>
       </StatusScreen>
     );
   }
@@ -146,7 +166,10 @@ export default function Documents() {
   if (status === "error") {
     return (
       <StatusScreen>
-        <p style={{ fontSize: 14, color: "var(--error)" }}>Failed to connect to backend.</p>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--error)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, marginBottom: 16 }}>
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: "0 0 6px" }}>Backend connection failed</p>
         {error && <p style={{ marginTop: 4, fontSize: 12, color: "var(--text-muted)" }}>{error}</p>}
       </StatusScreen>
     );
@@ -155,18 +178,18 @@ export default function Documents() {
   return (
     <div style={{ padding: "32px 40px", height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 32 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 28 }} className="fade-in">
         <div>
           <h1 className="heading-display" style={{ margin: 0 }}>
             {activeFolder ? activeFolder : "Documents"}
           </h1>
-          {documents.length > 0 && (
+          {documents.length > 0 && !loading && (
             <p className="label-upper" style={{ marginTop: 8 }}>
               {documents.length} document{documents.length !== 1 ? "s" : ""}
             </p>
           )}
         </div>
-        <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
           <button onClick={() => setUploadOpen(true)} className="btn-primary">
             <IconUpload /> Upload
           </button>
@@ -176,57 +199,48 @@ export default function Documents() {
         </div>
       </div>
 
-      {/* Error */}
+      {/* Error banner */}
       {fetchError && (
         <div style={{
-          marginBottom: 20,
-          padding: "12px 16px",
-          background: "rgba(192, 112, 112, 0.1)",
-          border: "1px solid rgba(192, 112, 112, 0.3)",
-          borderRadius: 8,
-          fontSize: 13,
-          color: "var(--error)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
+          marginBottom: 20, padding: "12px 16px",
+          background: "var(--error-bg)", border: "1px solid rgba(192, 112, 112, 0.25)",
+          borderRadius: 8, fontSize: 13, color: "var(--error)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          animation: "fadeIn 0.2s ease-out",
         }}>
-          {fetchError}
+          <span>{fetchError}</span>
           <button onClick={fetchDocuments} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", fontSize: 12, textDecoration: "underline" }}>
             Retry
           </button>
         </div>
       )}
 
-      {/* Loading */}
+      {/* Loading skeletons */}
       {loading && (
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-            <Spinner />
-            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Loading documents…</p>
-          </div>
+        <div style={{
+          display: "grid", gap: 12,
+          gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+        }}>
+          {[1, 2, 3, 4, 5, 6].map((i) => <SkeletonCard key={i} />)}
         </div>
       )}
 
-      {/* Empty */}
+      {/* Empty state */}
       {!loading && documents.length === 0 && !fetchError && (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{
-            textAlign: "center",
-            border: "1px dashed var(--border-strong)",
-            borderRadius: 14,
-            padding: "56px 48px",
-            maxWidth: 400,
-          }}>
-            <div style={{ width: 40, height: 40, margin: "0 auto 16px", color: "var(--text-muted)", opacity: 0.5 }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+          <div className="empty-state">
+            <div className="empty-state-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
             </div>
-            <p style={{ fontSize: 16, fontWeight: 400, color: "var(--text-secondary)", margin: "0 0 6px" }}>No documents yet</p>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 24px" }}>
-              Upload a file or crawl a URL to get started.
+            <p style={{ fontSize: 16, fontWeight: 400, color: "var(--text-secondary)", margin: "0 0 8px" }}>
+              {activeFolder ? `No documents in "${activeFolder}"` : "No documents yet"}
             </p>
-            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 24px", lineHeight: 1.6 }}>
+              Upload a file or crawl a URL to build your knowledge base.
+            </p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
               <button onClick={() => setUploadOpen(true)} className="btn-primary"><IconUpload /> Upload</button>
               <button onClick={() => setCrawlOpen(true)} className="btn-ghost"><IconGlobe /> Crawl URL</button>
             </div>
@@ -238,18 +252,17 @@ export default function Documents() {
       {!loading && documents.length > 0 && (
         <div style={{ flex: 1, overflowY: "auto" }}>
           <div style={{
-            display: "grid",
-            gap: 12,
+            display: "grid", gap: 12,
             gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-          }}>
+          }} className="stagger-children">
             {documents.map((doc) => (
               <div
                 key={doc.id}
-                className="warp-card"
-                style={{ cursor: "pointer", position: "relative", padding: "18px 18px 14px" }}
+                className="warp-card-clickable"
+                style={{ position: "relative", padding: "18px 18px 14px" }}
                 onClick={() => navigate(`/doc/${doc.id}`)}
               >
-                {/* Delete button */}
+                {/* Delete button — revealed on hover */}
                 <button
                   onClick={(e) => { e.stopPropagation(); setDeleteConfirm(doc.id); }}
                   className="btn-icon"
@@ -257,9 +270,12 @@ export default function Documents() {
                   style={{
                     position: "absolute", top: 10, right: 10,
                     opacity: 0, transition: "opacity 0.15s",
+                    zIndex: 1,
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
                   onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
+                  onFocus={(e) => (e.currentTarget.style.opacity = "1")}
+                  onBlur={(e) => (e.currentTarget.style.opacity = "0")}
                 >
                   <IconTrash />
                 </button>
@@ -271,13 +287,16 @@ export default function Documents() {
                     style={{
                       position: "absolute", inset: 0,
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      background: "rgba(26, 25, 23, 0.92)",
+                      background: "rgba(26, 25, 23, 0.94)",
                       borderRadius: "var(--radius-card)",
                       zIndex: 10,
+                      animation: "fadeIn 0.15s ease-out",
                     }}
                   >
-                    <div style={{ textAlign: "center" }}>
-                      <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 12 }}>Delete this document?</p>
+                    <div style={{ textAlign: "center", padding: "0 16px" }}>
+                      <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 14, lineHeight: 1.5 }}>
+                        Delete <strong style={{ color: "var(--text-primary)", fontWeight: 500 }}>{doc.title || "this document"}</strong>?
+                      </p>
                       <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDelete(doc.id); }}
@@ -292,33 +311,43 @@ export default function Documents() {
                   </div>
                 )}
 
-                {/* Source + Title */}
-                <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 8, paddingRight: 20 }}>
-                  <span style={{ color: "var(--text-muted)", marginTop: 1, flexShrink: 0 }}>
+                {/* Source icon + Title */}
+                <div style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 10, paddingRight: 24 }}>
+                  <span style={{
+                    color: doc.source_type === "url" ? "var(--text-link)" : "var(--text-faint)",
+                    marginTop: 1, flexShrink: 0,
+                  }}>
                     {doc.source_type === "url" ? <IconGlobe /> : <IconFile />}
                   </span>
-                  <h3 style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: 0, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                  <h3 style={{
+                    fontSize: 14, fontWeight: 500, color: "var(--text-primary)",
+                    margin: 0, lineHeight: 1.45,
+                    display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                  }}>
                     {doc.title || "Untitled"}
                   </h3>
                 </div>
 
                 {/* Content preview */}
                 {doc.content && (
-                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px", lineHeight: 1.6, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                    {doc.content.substring(0, 140)}{doc.content.length > 140 ? "…" : ""}
+                  <p style={{
+                    fontSize: 12, color: "var(--text-faint)", margin: "0 0 12px", lineHeight: 1.65,
+                    display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden",
+                  }}>
+                    {doc.content.substring(0, 150)}{doc.content.length > 150 ? "…" : ""}
                   </p>
                 )}
 
-                {/* Footer row */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                {/* Footer */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "auto" }}>
                   <span>
                     {doc.folder && (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)", background: "var(--surface-alt)", borderRadius: 4, padding: "2px 7px", letterSpacing: "0.5px" }}>
+                      <span className="tag">
                         <IconFolder />{doc.folder}
                       </span>
                     )}
                   </span>
-                  <span style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "1px", textTransform: "uppercase" }}>
+                  <span style={{ fontSize: 10, color: "var(--text-faint)", letterSpacing: "0.8px", textTransform: "uppercase" }}>
                     {relativeTime(doc.created_at)}
                   </span>
                 </div>

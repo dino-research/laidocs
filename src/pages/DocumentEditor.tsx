@@ -34,7 +34,7 @@ const IconChat = () => (
 );
 
 const IconTrash = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="3 6 5 6 21 6"/>
     <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
     <path d="M10 11v6"/><path d="M14 11v6"/>
@@ -43,7 +43,7 @@ const IconTrash = () => (
 );
 
 const IconGlobe = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10"/>
     <line x1="2" y1="12" x2="22" y2="12"/>
     <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
@@ -51,27 +51,16 @@ const IconGlobe = () => (
 );
 
 const IconFile = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
     <polyline points="13 2 13 9 20 9"/>
   </svg>
 );
 
-function Spinner({ size = 16 }: { size?: number }) {
-  return (
-    <div style={{
-      width: size, height: size,
-      border: `2px solid var(--border)`,
-      borderTopColor: "var(--text-muted)",
-      borderRadius: "50%",
-    }} className="spin" />
-  );
-}
-
 const saveStatusConfig: Record<SaveStatus, { text: string; color: string }> = {
   saved:   { text: "Saved",           color: "var(--success)" },
-  saving:  { text: "Saving…",         color: "var(--text-muted)" },
-  unsaved: { text: "Unsaved changes", color: "#c9a06b" },
+  saving:  { text: "Saving…",         color: "var(--text-faint)" },
+  unsaved: { text: "Unsaved changes", color: "var(--warn)" },
   error:   { text: "Save failed",     color: "var(--error)" },
 };
 
@@ -151,29 +140,34 @@ export default function DocumentEditor() {
     try { await apiDelete(`/api/documents/${id}`); navigate("/"); } catch { /* keep open */ }
   };
 
-  // ── Skeleton / states ──────────────────────────────────────────
   const toolbarStyle: React.CSSProperties = {
     display: "flex",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     borderBottom: "1px solid var(--border)",
-    padding: "8px 16px",
+    padding: "0 12px",
+    height: 44,
     background: "var(--surface)",
     flexShrink: 0,
   };
 
+  // Skeleton loading
   if (status !== "ready" || loading) {
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
         <div style={toolbarStyle}>
-          <div className="shimmer" style={{ width: 20, height: 20, borderRadius: "50%" }} />
-          <div className="shimmer" style={{ width: 200, height: 16 }} />
+          <div className="shimmer" style={{ width: 24, height: 24, borderRadius: 6 }} />
+          <div className="shimmer" style={{ width: 180, height: 13, marginLeft: 4 }} />
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-            {[80, 80, 100].map((w, i) => <div key={i} className="shimmer" style={{ width: w, height: 28, borderRadius: "var(--radius-pill)" }} />)}
+            {[72, 72, 90].map((w, i) => <div key={i} className="shimmer" style={{ width: w, height: 26, borderRadius: 20 }} />)}
           </div>
         </div>
-        <div style={{ padding: 32, display: "flex", flexDirection: "column", gap: 12 }}>
-          {[240, 160, 200, 280, 120].map((w, i) => <div key={i} className="shimmer" style={{ width: w, height: 14 }} />)}
+        <div style={{ padding: "32px 36px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="shimmer" style={{ width: "55%", height: 15 }} />
+          <div className="shimmer" style={{ width: "80%", height: 13 }} />
+          <div className="shimmer" style={{ width: "70%", height: 13 }} />
+          <div className="shimmer" style={{ width: "90%", height: 13 }} />
+          <div className="shimmer" style={{ width: "45%", height: 13 }} />
         </div>
       </div>
     );
@@ -187,9 +181,9 @@ export default function DocumentEditor() {
         </div>
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
           <div>
-            <p style={{ fontSize: 16, color: "var(--text-secondary)", marginBottom: 12 }}>{error || "Document not found"}</p>
-            <button onClick={() => navigate("/")} style={{ fontSize: 13, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
-              Return to documents
+            <p style={{ fontSize: 15, color: "var(--text-secondary)", marginBottom: 14 }}>{error || "Document not found"}</p>
+            <button onClick={() => navigate("/")} className="btn-ghost" style={{ fontSize: 13 }}>
+              <IconBack /> Back to documents
             </button>
           </div>
         </div>
@@ -206,12 +200,7 @@ export default function DocumentEditor() {
   const statusInfo = saveStatusConfig[saveStatus];
 
   const sourceBadge = (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 4,
-      fontSize: 11, letterSpacing: "1px", textTransform: "uppercase",
-      color: "var(--text-muted)", background: "var(--surface-alt)",
-      border: "1px solid var(--border)", borderRadius: 4, padding: "2px 8px",
-    }}>
+    <span className="badge" style={{ gap: 5 }}>
       {doc.source_type === "url" ? <IconGlobe /> : <IconFile />}
       {doc.source_type === "url" ? "URL" : "File"}
     </span>
@@ -225,7 +214,12 @@ export default function DocumentEditor() {
           <IconBack />
         </button>
 
-        <h1 style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 240 }}>
+        <div style={{ width: 1, height: 16, background: "var(--border)", flexShrink: 0, margin: "0 2px" }} />
+
+        <h1 style={{
+          fontSize: 13, fontWeight: 500, color: "var(--text-secondary)", margin: 0,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220,
+        }}>
           {doc.title || doc.filename || `Document ${id}`}
         </h1>
 
@@ -233,44 +227,47 @@ export default function DocumentEditor() {
 
         <div style={{ flex: 1 }} />
 
-        {/* View mode toggle */}
-        <div style={{ display: "flex", alignItems: "center", background: "var(--surface-alt)", borderRadius: 8, padding: 3 }}>
-          {viewModes.map(({ mode, label }) => (
-            <button key={mode} onClick={() => setViewMode(mode)} style={{
-              padding: "4px 12px", fontSize: 12, fontWeight: 400,
-              borderRadius: 6, border: "none", cursor: "pointer",
-              background: viewMode === mode ? "var(--btn-bg)" : "transparent",
-              color: viewMode === mode ? "var(--text-primary)" : "var(--text-muted)",
-              transition: "all 0.15s",
-            }}>{label}</button>
-          ))}
-        </div>
-
-        <span style={{ fontSize: 11, color: statusInfo.color, letterSpacing: "0.5px", flexShrink: 0 }}>
+        {/* Save status dot */}
+        <span style={{ fontSize: 11, color: statusInfo.color, letterSpacing: "0.3px", flexShrink: 0, transition: "color 0.2s" }}>
           {statusInfo.text}
         </span>
 
-        {/* Chat button */}
+        {/* View mode segment */}
+        <div className="segment-group">
+          {viewModes.map(({ mode, label }) => (
+            <button
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              className={`segment-btn ${viewMode === mode ? "segment-btn-active" : "segment-btn-inactive"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Chat toggle */}
         <button
           id="chat-with-doc-btn"
           onClick={() => setShowChat((v) => !v)}
           style={{
             display: "inline-flex", alignItems: "center", gap: 6,
-            padding: "6px 14px", fontSize: 12, fontWeight: 400,
-            borderRadius: "var(--radius-pill)", border: "1px solid",
+            padding: "5px 13px", fontSize: 12, fontWeight: 400,
+            borderRadius: "var(--radius-pill)",
+            border: `1px solid ${showChat ? "var(--border-strong)" : "var(--border)"}`,
             cursor: "pointer", transition: "all 0.15s",
             background: showChat ? "var(--surface-alt)" : "transparent",
             color: showChat ? "var(--text-primary)" : "var(--text-muted)",
-            borderColor: showChat ? "var(--border-strong)" : "var(--border)",
+            fontFamily: "inherit",
           }}
-          title="Chat with this document"
+          title="Chat with this document (RAG)"
         >
-          <IconChat /> Chat
+          <IconChat />
+          Chat
         </button>
 
         {/* Delete */}
         {showDeleteConfirm ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, padding: "0 4px" }}>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Delete?</span>
             <button onClick={handleDelete} style={{ fontSize: 11, padding: "4px 10px", borderRadius: "var(--radius-pill)", background: "var(--error)", color: "var(--text-primary)", border: "none", cursor: "pointer" }}>Yes</button>
             <button onClick={() => setShowDeleteConfirm(false)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: "var(--radius-pill)", background: "var(--surface-alt)", color: "var(--text-muted)", border: "1px solid var(--border)", cursor: "pointer" }}>No</button>
@@ -300,13 +297,14 @@ export default function DocumentEditor() {
                 style={{
                   flex: 1, resize: "none",
                   background: "var(--surface)",
-                  color: "var(--text-secondary)",
+                  color: "var(--text-muted)",
                   fontFamily: "'Geist Mono', 'Courier New', monospace",
                   fontSize: 13,
-                  lineHeight: 1.7,
+                  lineHeight: 1.75,
                   padding: "28px 32px",
                   border: "none",
                   outline: "none",
+                  letterSpacing: "0.01em",
                 }}
                 placeholder="Start writing markdown…"
                 spellCheck={false}
@@ -325,8 +323,12 @@ export default function DocumentEditor() {
           )}
         </div>
 
+        {/* Chat panel — slide in from right */}
         {showChat && id && (
-          <div style={{ width: 380, flexShrink: 0, borderLeft: "1px solid var(--border)", overflow: "hidden" }}>
+          <div style={{
+            width: 380, flexShrink: 0, borderLeft: "1px solid var(--border)", overflow: "hidden",
+            animation: "slideInRight 0.22s cubic-bezier(0.22, 1, 0.36, 1) both",
+          }}>
             <ChatPanel docId={id} onClose={() => setShowChat(false)} />
           </div>
         )}
