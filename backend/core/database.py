@@ -1,4 +1,8 @@
-"""SQLite database manager for LAIDocs — documents, folders, and FTS5 search."""
+"""SQLite + LanceDB database layer for LAIDocs.
+
+SQLite: document metadata, folder tree, FTS5 full-text index.
+LanceDB: vector embeddings for semantic (dense) search.
+"""
 
 from __future__ import annotations
 
@@ -7,13 +11,14 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
 
-from fastapi import Depends
-
 from .config import LAIDOCS_HOME
 
 DB_PATH = LAIDOCS_HOME / "data" / "laidocs.db"
+LANCE_PATH = str(LAIDOCS_HOME / "data" / "vectors.lance")
 
-# ── initialisation ──────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# SQLite schema
+# ---------------------------------------------------------------------------
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS folders (
@@ -64,7 +69,7 @@ END;
 
 
 def init_db() -> None:
-    """Create DB file and all tables if they don't exist yet."""
+    """Create DB file and all tables if they do not exist yet."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(str(DB_PATH)) as conn:
         conn.execute("PRAGMA journal_mode=WAL")
@@ -72,7 +77,10 @@ def init_db() -> None:
         conn.executescript(_SCHEMA)
 
 
-# ── connection dependency ───────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# SQLite connection helpers
+# ---------------------------------------------------------------------------
+
 
 @contextmanager
 def get_db() -> Generator[sqlite3.Connection, None, None]:
@@ -91,7 +99,7 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
 
 
 def db_dependency() -> Generator[sqlite3.Connection, None, None]:
-    """FastAPI Depends-compatible wrapper (defers the context-manager)."""
+    """FastAPI Depends-compatible wrapper around get_db()."""
     gen = get_db()
     try:
         yield next(gen)
@@ -100,3 +108,57 @@ def db_dependency() -> Generator[sqlite3.Connection, None, None]:
             next(gen)
         except StopIteration:
             pass
+
+
+# ---------------------------------------------------------------------------
+# LanceDB vector store
+# ---------------------------------------------------------------------------
+
+_lance_table_cache: object | None = None
+
+
+def get_lance_table():
+    """Return (and lazily create) the LanceDB 'chunks' table.
+
+    Columns:
+        id          -- chunk id  "<doc_id>__<chunk_index>"
+        doc_id      -- parent document id
+        chunk_index -- position within the document  (int32)
+        content     -- raw text of this chunk
+        vector      -- embedding vector  (list[float32])
+
+    The table is created on first call and cached in module state for the
+    lifetime of the server process.  Importing lancedb/pyarrow is deferred
+    so that the rest of the app works even when these packages are absent.
+    """
+    global _lance_table_cache
+
+    if _lance_table_cache is not None:
+        return _lance_table_cache
+
+    import lancedb
+    import pyarrow as pa
+
+    db = lancedb.connect(LANCE_PATH)
+
+    if "chunks" not in db.table_names():
+        schema = pa.schema(
+            [
+                pa.field("id", pa.string()),
+                pa.field("doc_id", pa.string()),
+                pa.field("chunk_index", pa.int32()),
+                pa.field("content", pa.string()),
+                pa.field("vector", pa.list_(pa.float32())),
+            ]
+        )
+        _lance_table_cache = db.create_table("chunks", schema=schema)
+    else:
+        _lance_table_cache = db.open_table("chunks")
+
+    return _lance_table_cache
+
+
+def invalidate_lance_cache() -> None:
+    """Reset the cached LanceDB table handle (useful after schema changes)."""
+    global _lance_table_cache
+    _lance_table_cache = None

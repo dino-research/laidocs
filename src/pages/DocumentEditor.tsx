@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useSidecar } from "../hooks/useSidecar";
 import { apiGet, apiPut, apiDelete } from "../lib/sidecar";
 import MarkdownPreview from "../components/MarkdownPreview";
+import ChatPanel from "../components/ChatPanel";
 
 type ViewMode = "edit" | "preview" | "split";
 type SaveStatus = "saved" | "saving" | "unsaved" | "error";
@@ -31,6 +32,7 @@ export default function DocumentEditor() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showChat, setShowChat] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -287,6 +289,21 @@ export default function DocumentEditor() {
           {statusInfo.text}
         </span>
 
+        {/* Chat button */}
+        <button
+          id="chat-with-doc-btn"
+          onClick={() => setShowChat((v) => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg transition-all shrink-0 ${
+            showChat
+              ? "bg-purple-600/30 text-purple-300 border border-purple-500/40"
+              : "bg-white/5 text-gray-400 hover:text-gray-200 hover:bg-white/8 border border-white/8"
+          }`}
+          title="Chat with this document"
+        >
+          <span>💬</span>
+          Chat
+        </button>
+
         {/* Delete button */}
         <div className="relative shrink-0">
           {showDeleteConfirm ? (
@@ -328,33 +345,43 @@ export default function DocumentEditor() {
         </div>
       </div>
 
-      {/* ── Editor / Preview area ────────────────────────────────── */}
+      {/* ── Editor / Preview area ─────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
-        {(viewMode === "edit" || viewMode === "split") && (
-          <div
-            className={`flex flex-col bg-gray-900 ${
-              viewMode === "split" ? "w-1/2 border-r border-gray-800" : "w-full"
-            }`}
-          >
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={handleContentChange}
-              onKeyDown={handleKeyDown}
-              className="flex-1 resize-none bg-gray-900 text-gray-100 font-mono text-sm p-6 leading-relaxed focus:outline-none placeholder-gray-600"
-              placeholder="Start writing markdown…"
-              spellCheck={false}
-            />
-          </div>
-        )}
+        {/* Editor + Preview columns */}
+        <div className="flex flex-1 overflow-hidden">
+          {(viewMode === "edit" || viewMode === "split") && (
+            <div
+              className={`flex flex-col bg-gray-900 ${
+                viewMode === "split" ? "w-1/2 border-r border-gray-800" : "w-full"
+              }`}
+            >
+              <textarea
+                ref={textareaRef}
+                value={content}
+                onChange={handleContentChange}
+                onKeyDown={handleKeyDown}
+                className="flex-1 resize-none bg-gray-900 text-gray-100 font-mono text-sm p-6 leading-relaxed focus:outline-none placeholder-gray-600"
+                placeholder="Start writing markdown…"
+                spellCheck={false}
+              />
+            </div>
+          )}
 
-        {(viewMode === "preview" || viewMode === "split") && (
-          <div
-            className={`flex flex-col bg-gray-900 ${
-              viewMode === "split" ? "w-1/2" : "w-full"
-            }`}
-          >
-            <MarkdownPreview content={content} />
+          {(viewMode === "preview" || viewMode === "split") && (
+            <div
+              className={`flex flex-col bg-gray-900 ${
+                viewMode === "split" ? "w-1/2" : "w-full"
+              }`}
+            >
+              <MarkdownPreview content={content} />
+            </div>
+          )}
+        </div>
+
+        {/* Chat panel (slide-in from right) */}
+        {showChat && id && (
+          <div className="w-96 shrink-0 border-l border-white/8 overflow-hidden">
+            <ChatPanel docId={id} onClose={() => setShowChat(false)} />
           </div>
         )}
       </div>

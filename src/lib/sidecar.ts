@@ -47,13 +47,14 @@ export async function apiDelete<T>(path: string): Promise<T> {
 // ── Streaming chat (SSE) ──────────────────────────────────────────
 
 export async function streamChat(
-  prompt: string,
+  docId: string,
+  question: string,
   onChunk: (text: string) => void,
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/chat`, {
+  const res = await fetch(`${API_BASE}/api/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ doc_id: docId, question }),
   });
 
   if (!res.ok || !res.body) {
@@ -64,24 +65,24 @@ export async function streamChat(
   const decoder = new TextDecoder();
 
   try {
+    let buffer = "";
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value, { stream: true });
-      // Parse SSE lines: "data: {...}\n\n"
-      const lines = chunk.split("\n");
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      // Keep the last (possibly incomplete) line in the buffer
+      buffer = lines.pop() ?? "";
+
       for (const line of lines) {
         const trimmed = line.trim();
-        if (trimmed.startsWith("data: ") && trimmed !== "data: [DONE]") {
-          try {
-            const json = JSON.parse(trimmed.slice(6)) as { text?: string; content?: string };
-            const text = json.text ?? json.content ?? "";
-            if (text) onChunk(text);
-          } catch {
-            // ignore non-JSON data lines
-          }
-        }
+        if (!trimmed.startsWith("data: ")) continue;
+        const payload = trimmed.slice(6);
+        if (payload === "[DONE]") return;
+        if (payload.startsWith("[ERROR]")) throw new Error(payload.slice(8));
+        // Tokens are plain text with escaped newlines
+        onChunk(payload.replace(/\\n/g, "\n"));
       }
     }
   } finally {
