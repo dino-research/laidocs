@@ -5,3 +5,4 @@ pydantic-settings>=2.0
 openai>=1.60.0
 python-multipart>=0.0.18
 aiofiles>=24.0
+markitdown[all]>=0.1.0
