@@ -32,3 +32,6 @@ Thumbs.db
 
 # PyInstaller
 *.spec.bak
+
+# Compiled sidecar binaries
+src-tauri/bin/api/main-*
