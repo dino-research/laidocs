@@ -3,18 +3,31 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from ..core.database import get_db
 from ..core.vault import vault
 from ..services.converter import DocumentConverter
+from ..services.crawler import WebCrawler
 
-# ── converter singleton ────────────────────────────────────────────
+# ── singletons ─────────────────────────────────────────────────────
 
 converter = DocumentConverter()
+crawler = WebCrawler()
+
+# ── request models ────────────────────────────────────────────────
+
+
+class CrawlRequest(BaseModel):
+    url: str
+    folder: str = "unsorted"
+
 
 # ── allowed file extensions ────────────────────────────────────────
 
@@ -101,6 +114,60 @@ async def upload_document(
         raise HTTPException(status_code=500, detail=f"Conversion failed: {exc}")
     finally:
         os.unlink(tmp_path)
+
+
+@documents_router.post("/crawl")
+async def crawl_url(body: CrawlRequest):
+    """Crawl a URL, convert to Markdown, and save to the vault."""
+    parsed = urlparse(body.url)
+    if not parsed.scheme or parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="Invalid URL: must start with http:// or https://")
+
+    try:
+        markdown, title = await crawler.crawl(body.url)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to crawl URL: {exc}") from exc
+
+    # Derive a safe filename from the title
+    filename = re.sub(r"[^\w\-.]", "-", title)[:50].strip("-") + ".md"
+    if filename == ".md":
+        filename = "untitled.md"
+
+    meta = vault.save_document(
+        folder=body.folder,
+        filename=filename,
+        content=markdown,
+        title=title,
+        source_type="url",
+        original_path=body.url,
+    )
+
+    # Insert into SQLite for FTS (ensure folder row exists)
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO folders (path, name) VALUES (?, ?)",
+            (meta.folder, meta.folder.split("/")[-1] or meta.folder),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO documents (id, folder, filename, title, source_type, original_path, content) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (
+                meta.doc_id,
+                meta.folder,
+                meta.filename,
+                meta.title,
+                meta.source_type,
+                meta.original_path,
+                markdown,
+            ),
+        )
+
+    return {
+        "id": meta.doc_id,
+        "title": meta.title,
+        "folder": meta.folder,
+        "filename": meta.filename,
+    }
 
 
 @documents_router.get("/{doc_id}")
