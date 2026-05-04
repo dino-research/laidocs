@@ -113,6 +113,7 @@ def _vector_search(
     # LanceDB returns a pandas DataFrame
     results = (
         table.search(query_vector)
+        .vector_column_name("vector")
         .metric("cosine")
         .limit(top_k * 5)  # over-fetch to handle per-doc dedup
         .to_pandas()

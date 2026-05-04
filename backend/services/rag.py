@@ -7,6 +7,7 @@ an LLM answer that is grounded in the document content.
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import AsyncGenerator
 
 from ..core.config import Settings, get_settings
@@ -37,22 +38,44 @@ Rules:
 MAX_CONTEXT_CHARS = 12_000  # ~3 000 tokens at 4 chars/token
 
 
+def _sanitize_fts_query(query: str) -> str:
+    """Strip characters that break FTS5 MATCH syntax (e.g. ?, !, *, quotes)."""
+    # Remove punctuation that FTS5 treats as operators/syntax
+    cleaned = re.sub(r'[?"\'*(){}\[\]\\:^~]', " ", query)
+    # Collapse whitespace and strip
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    # FTS5 needs at least one token; use AND between remaining words
+    return cleaned.replace(" ", " ") if cleaned else ""
+
+
 def _retrieve_fts_chunks(doc_id: str, query: str, top_k: int = 8) -> list[str]:
     """Return the top-K chunks from *doc_id* using FTS5 within the document."""
+    fts_query = _sanitize_fts_query(query)
+    if not fts_query:
+        # Fallback: return beginning of document
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT SUBSTR(content, 1, ?) FROM documents WHERE id=?",
+                (MAX_CONTEXT_CHARS, doc_id),
+            ).fetchone()
+            return [row[0]] if row and row[0] else []
+
     with get_db() as conn:
-        # Check if FTS has content for this doc
-        rows = conn.execute(
-            """
-            SELECT snippet(documents_fts, 1, '', '', '...', 50) AS chunk
-            FROM documents_fts
-            JOIN documents d ON d.rowid = documents_fts.rowid
-            WHERE documents_fts MATCH ?
-              AND d.id = ?
-            ORDER BY rank
-            LIMIT ?
-            """,
-            (query, doc_id, top_k),
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                """
+                SELECT snippet(documents_fts, 1, '', '', '...', 50) AS chunk
+                FROM documents_fts
+                JOIN documents d ON d.rowid = documents_fts.rowid
+                WHERE documents_fts MATCH ?
+                  AND d.id = ?
+                ORDER BY rank
+                LIMIT ?
+                """,
+                (fts_query, doc_id, top_k),
+            ).fetchall()
+        except Exception:
+            rows = []
 
         if rows:
             return [r[0] for r in rows if r[0]]
@@ -71,6 +94,7 @@ def _retrieve_vector_chunks(doc_id: str, query_vector: list[float], top_k: int =
     try:
         df = (
             table.search(query_vector)
+            .vector_column_name("vector")
             .where(f"doc_id = '{doc_id}'")
             .metric("cosine")
             .limit(top_k)

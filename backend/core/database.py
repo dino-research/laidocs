@@ -7,6 +7,7 @@ LanceDB: vector embeddings for semantic (dense) search.
 from __future__ import annotations
 
 import sqlite3
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
@@ -115,6 +116,7 @@ def db_dependency() -> Generator[sqlite3.Connection, None, None]:
 # ---------------------------------------------------------------------------
 
 _lance_table_cache: object | None = None
+_lance_lock = threading.Lock()
 
 
 def get_lance_table():
@@ -125,10 +127,10 @@ def get_lance_table():
         doc_id      -- parent document id
         chunk_index -- position within the document  (int32)
         content     -- raw text of this chunk
-        vector      -- embedding vector  (list[float32])
+        vector      -- embedding vector  (lancedb vector type)
 
-    The table is created on first call and cached in module state for the
-    lifetime of the server process.  Importing lancedb/pyarrow is deferred
+    Thread-safe: a lock prevents race conditions when multiple background
+    tasks call this concurrently.  Importing lancedb/pyarrow is deferred
     so that the rest of the app works even when these packages are absent.
     """
     global _lance_table_cache
@@ -136,26 +138,31 @@ def get_lance_table():
     if _lance_table_cache is not None:
         return _lance_table_cache
 
-    import lancedb
-    import pyarrow as pa
+    with _lance_lock:
+        # Double-check after acquiring lock
+        if _lance_table_cache is not None:
+            return _lance_table_cache
 
-    db = lancedb.connect(LANCE_PATH)
+        import lancedb
+        import pyarrow as pa
 
-    if "chunks" not in db.table_names():
-        schema = pa.schema(
-            [
-                pa.field("id", pa.string()),
-                pa.field("doc_id", pa.string()),
-                pa.field("chunk_index", pa.int32()),
-                pa.field("content", pa.string()),
-                pa.field("vector", pa.list_(pa.float32())),
-            ]
-        )
-        _lance_table_cache = db.create_table("chunks", schema=schema)
-    else:
-        _lance_table_cache = db.open_table("chunks")
+        db = lancedb.connect(LANCE_PATH)
 
-    return _lance_table_cache
+        if "chunks" not in db.table_names():
+            schema = pa.schema(
+                [
+                    pa.field("id", pa.string()),
+                    pa.field("doc_id", pa.string()),
+                    pa.field("chunk_index", pa.int32()),
+                    pa.field("content", pa.string()),
+                    pa.field("vector", pa.list_(pa.float32())),
+                ]
+            )
+            _lance_table_cache = db.create_table("chunks", schema=schema)
+        else:
+            _lance_table_cache = db.open_table("chunks")
+
+        return _lance_table_cache
 
 
 def invalidate_lance_cache() -> None:
