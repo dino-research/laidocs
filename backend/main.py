@@ -22,11 +22,13 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from backend.core.config import LAIDOCS_HOME, get_settings
 from backend.core.database import init_db
+from backend.core.exceptions import LAIDocsError
 from backend.core.vault import VAULT_DIR
 
 # ── CLI arguments ──────────────────────────────────────────────────
@@ -61,6 +63,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Global exception handlers ──────────────────────────────────────
+
+@app.exception_handler(LAIDocsError)
+async def laidocs_error_handler(request: Request, exc: LAIDocsError):
+    """Convert domain errors to JSON HTTP responses."""
+    return JSONResponse(
+        status_code=exc.http_status,
+        content={"detail": exc.message},
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_error_handler(request: Request, exc: Exception):
+    """Catch-all handler — log and return 500."""
+    import traceback
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An internal server error occurred."},
+    )
 
 
 # ── Routers ────────────────────────────────────────────────────────
