@@ -1,17 +1,182 @@
 const API_BASE = "http://localhost:8008";
 
+// ── Generic HTTP helpers ───────────────────────────────────────────
+
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`);
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
-  return res.json();
+  if (!res.ok) {
+    throw new Error(`GET ${path} failed: ${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<T>;
 }
 
-export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+export async function apiPost<T, B = unknown>(path: string, body: B): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
-  return res.json();
+  if (!res.ok) {
+    throw new Error(`POST ${path} failed: ${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export async function apiPut<T, B = unknown>(path: string, body: B): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`PUT ${path} failed: ${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export async function apiDelete<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    throw new Error(`DELETE ${path} failed: ${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+// ── Streaming chat (SSE) ──────────────────────────────────────────
+
+export async function streamChat(
+  prompt: string,
+  onChunk: (text: string) => void,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+
+  if (!res.ok || !res.body) {
+    throw new Error(`Chat request failed: ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      // Parse SSE lines: "data: {...}\n\n"
+      const lines = chunk.split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("data: ") && trimmed !== "data: [DONE]") {
+          try {
+            const json = JSON.parse(trimmed.slice(6)) as { text?: string; content?: string };
+            const text = json.text ?? json.content ?? "";
+            if (text) onChunk(text);
+          } catch {
+            // ignore non-JSON data lines
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+// ── Sidecar health check ──────────────────────────────────────────
+
+const HEALTH_PATH = `${API_BASE}/api/health`;
+const POLL_INTERVAL_MS = 500;
+const MAX_WAIT_MS = 30_000;
+
+/**
+ * Wait until the sidecar backend is healthy.
+ *
+ * - Dev mode (no Tauri): polls /api/health until 200.
+ * - Tauri mode: listens for the `sidecar-stdout` event from Tauri's shell plugin.
+ *
+ * Returns a promise that resolves on success or rejects on timeout / error.
+ */
+export function waitForSidecar(): Promise<void> {
+  // Detect whether we're running inside Tauri
+  const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+  if (isTauri) {
+    return waitForSidecarTauri();
+  }
+  return waitForSidecarDev();
+}
+
+// ── Dev mode: poll health endpoint ────────────────────────────────
+
+function waitForSidecarDev(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+
+    const poll = async () => {
+      try {
+        const res = await fetch(HEALTH_PATH);
+        if (res.ok) {
+          resolve();
+          return;
+        }
+      } catch {
+        // backend not up yet
+      }
+
+      if (Date.now() - start > MAX_WAIT_MS) {
+        reject(new Error("Sidecar did not become ready in time"));
+        return;
+      }
+
+      setTimeout(poll, POLL_INTERVAL_MS);
+    };
+
+    poll();
+  });
+}
+
+// ── Tauri mode: listen for sidecar-stdout event ───────────────────
+
+async function waitForSidecarTauri(): Promise<void> {
+  const { listen } = await import("@tauri-apps/api/event");
+
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Sidecar did not become ready in time"));
+    }, MAX_WAIT_MS);
+
+    listen<string>("sidecar-stdout", (event) => {
+      if (typeof event.payload === "string" && event.payload.includes("ready")) {
+        clearTimeout(timeout);
+        resolve();
+      }
+    });
+
+    // Also poll as a fallback
+    const start = Date.now();
+    const poll = async () => {
+      try {
+        const res = await fetch(HEALTH_PATH);
+        if (res.ok) {
+          clearTimeout(timeout);
+          resolve();
+          return;
+        }
+      } catch {
+        // not up yet
+      }
+      if (Date.now() - start > MAX_WAIT_MS) {
+        reject(new Error("Sidecar did not become ready in time"));
+      }
+      setTimeout(poll, POLL_INTERVAL_MS);
+    };
+    poll();
+  });
 }
