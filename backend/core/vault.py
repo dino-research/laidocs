@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -119,9 +120,9 @@ class VaultManager:
         """Return a flat list of all folders in the vault."""
         _ensure_vault()
         result: list[dict[str, Any]] = []
-        for root, dirs, _files in VAULT_DIR.walk():
+        for root, dirs, _files in os.walk(VAULT_DIR):
             for d in sorted(dirs):
-                full = root / d
+                full = Path(root) / d
                 rel = str(full.relative_to(VAULT_DIR))
                 result.append({
                     "path": rel,
