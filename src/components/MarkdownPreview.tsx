@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+import { API_BASE } from "../lib/sidecar";
 import remarkGfm from "remark-gfm";
 
 interface MarkdownPreviewProps {
@@ -116,9 +117,16 @@ export default function MarkdownPreview({ content }: MarkdownPreviewProps) {
             </td>
           ),
           hr: () => <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "24px 0" }} />,
-          img: ({ src, alt }) => (
-            <img src={src} alt={alt ?? ""} style={{ maxWidth: "100%", borderRadius: 8, margin: "12px 0", border: "1px solid var(--border)" }} />
-          ),
+          img: ({ src, alt }) => {
+            // Rewrite vault asset URLs to point at the backend server.
+            // Stored markdown uses relative paths like /assets/xxx.png which
+            // the browser would resolve against the frontend origin (Vite/Tauri)
+            // instead of the FastAPI sidecar at API_BASE.
+            const resolvedSrc = src?.startsWith("/assets/") ? `${API_BASE}${src}` : src;
+            return (
+              <img src={resolvedSrc} alt={alt ?? ""} style={{ maxWidth: "100%", borderRadius: 8, margin: "12px 0", border: "1px solid var(--border)" }} />
+            );
+          },
           strong: ({ children }) => (
             <strong style={{ fontWeight: 500, color: "var(--text-primary)" }}>{children}</strong>
           ),

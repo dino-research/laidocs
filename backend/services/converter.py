@@ -149,9 +149,27 @@ class DoclingConverter:
             params=MarkdownParams(image_mode=ImageRefMode.PLACEHOLDER),
         )
         markdown = serializer.serialize().text
+        markdown = self._post_process(markdown)
         markdown = self._refine(markdown)
         title = _extract_title(markdown, file_path)
         return markdown, title
+
+    # ── deterministic post-processing ────────────────────────────────────────
+
+    @staticmethod
+    def _post_process(md: str) -> str:
+        """Clean up known Docling output artefacts before optional LLM refinement.
+
+        - ``<!-- formula-not-decoded -->`` → ``$[?]$`` (inline math placeholder)
+          Docling emits this when it detects a math formula element but cannot
+          recover the LaTeX source (e.g. image-only formulas in scanned PDFs).
+        - Collapse runs of 3+ blank lines to 2 (keeps paragraphs tight).
+        """
+        # Replace HTML comment placeholder with a readable inline math stub
+        md = md.replace("<!-- formula-not-decoded -->", "$[?]$")
+        # Collapse excessive blank lines
+        md = re.sub(r"\n{3,}", "\n\n", md)
+        return md
 
     # ── optional LLM post-processing ─────────────────────────────────────────
 
