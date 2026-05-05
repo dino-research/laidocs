@@ -31,7 +31,7 @@ function WarpInput({ label, value, onChange, placeholder, type = "text" }: {
         <input
           type={isPassword && !visible ? "password" : "text"}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value.trim())}
           placeholder={placeholder}
           className="warp-input"
         />
@@ -209,7 +209,7 @@ export default function Settings() {
     setLlmTest(null);
     try {
       const res = await apiPost<{ success: boolean; response?: string; error?: string }>("/api/settings/test-llm", {
-        base_url: settings.llm.base_url, api_key: settings.llm.api_key, model: settings.llm.model,
+        base_url: settings.llm.base_url || "https://api.openai.com/v1", api_key: settings.llm.api_key, model: settings.llm.model,
       });
       setLlmTest(res.success
         ? { type: "success", message: `LLM responded: "${res.response}"` }
@@ -224,7 +224,7 @@ export default function Settings() {
     setEmbTest(null);
     try {
       const res = await apiPost<{ success: boolean; dimension?: number; error?: string }>("/api/settings/test-embedding", {
-        base_url: settings.embedding.base_url, api_key: settings.embedding.api_key, model: settings.embedding.model,
+        base_url: settings.embedding.base_url || "https://api.openai.com/v1", api_key: settings.embedding.api_key, model: settings.embedding.model,
       });
       setEmbTest(res.success
         ? { type: "success", message: `Embedding OK — dimension: ${res.dimension}` }
@@ -239,31 +239,25 @@ export default function Settings() {
     setSaving(true); setSaveStatus(null);
     try {
       const payload: Partial<SettingsData> = {};
-      const llmChanged = settings.llm.base_url !== original.llm.base_url || settings.llm.model !== original.llm.model || settings.llm.api_key !== original.llm.api_key;
+      
+      const llmBaseUrl = settings.llm.base_url || "https://api.openai.com/v1";
+      const llmChanged = llmBaseUrl !== original.llm.base_url || settings.llm.model !== original.llm.model || settings.llm.api_key !== original.llm.api_key;
       if (llmChanged) {
-        const p = {} as ServiceConfig;
-        if (settings.llm.base_url !== original.llm.base_url) p.base_url = settings.llm.base_url;
-        if (settings.llm.model !== original.llm.model) p.model = settings.llm.model;
-        if (settings.llm.api_key !== original.llm.api_key) p.api_key = settings.llm.api_key;
-        payload.llm = p;
+        payload.llm = { base_url: llmBaseUrl, model: settings.llm.model, api_key: settings.llm.api_key };
       }
-      const embChanged = settings.embedding.base_url !== original.embedding.base_url || settings.embedding.model !== original.embedding.model || settings.embedding.api_key !== original.embedding.api_key;
+      
+      const embBaseUrl = settings.embedding.base_url || "https://api.openai.com/v1";
+      const embChanged = embBaseUrl !== original.embedding.base_url || settings.embedding.model !== original.embedding.model || settings.embedding.api_key !== original.embedding.api_key;
       if (embChanged) {
-        const p = {} as ServiceConfig;
-        if (settings.embedding.base_url !== original.embedding.base_url) p.base_url = settings.embedding.base_url;
-        if (settings.embedding.model !== original.embedding.model) p.model = settings.embedding.model;
-        if (settings.embedding.api_key !== original.embedding.api_key) p.api_key = settings.embedding.api_key;
-        payload.embedding = p;
+        payload.embedding = { base_url: embBaseUrl, model: settings.embedding.model, api_key: settings.embedding.api_key };
       }
-      const rerChanged = settings.reranker.base_url !== original.reranker.base_url || settings.reranker.model !== original.reranker.model || settings.reranker.api_key !== original.reranker.api_key || settings.reranker.enabled !== original.reranker.enabled;
+      
+      const rerBaseUrl = settings.reranker.base_url || "https://api.openai.com/v1";
+      const rerChanged = rerBaseUrl !== original.reranker.base_url || settings.reranker.model !== original.reranker.model || settings.reranker.api_key !== original.reranker.api_key || settings.reranker.enabled !== original.reranker.enabled;
       if (rerChanged) {
-        const p = {} as RerankerConfig;
-        if (settings.reranker.base_url !== original.reranker.base_url) p.base_url = settings.reranker.base_url;
-        if (settings.reranker.model !== original.reranker.model) p.model = settings.reranker.model;
-        if (settings.reranker.api_key !== original.reranker.api_key) p.api_key = settings.reranker.api_key;
-        if (settings.reranker.enabled !== original.reranker.enabled) p.enabled = settings.reranker.enabled;
-        payload.reranker = p;
+        payload.reranker = { base_url: rerBaseUrl, model: settings.reranker.model, api_key: settings.reranker.api_key, enabled: settings.reranker.enabled };
       }
+      
       if (settings.port !== original.port) payload.port = settings.port;
       const updated = await apiPut<SettingsData>("/api/settings", payload);
       setSettings(updated); setOriginal(updated);
@@ -274,7 +268,28 @@ export default function Settings() {
   }, [settings, original]);
 
   // ── Dirty check ───────────────────────────────────────────────
-  const isDirty = settings && original && JSON.stringify(settings) !== JSON.stringify(original);
+  const isDirty = (() => {
+    if (!settings || !original) return false;
+    const llmBaseUrl = settings.llm.base_url || "https://api.openai.com/v1";
+    if (llmBaseUrl !== original.llm.base_url) return true;
+    if (settings.llm.model !== original.llm.model) return true;
+    if (settings.llm.api_key !== original.llm.api_key) return true;
+    
+    const embBaseUrl = settings.embedding.base_url || "https://api.openai.com/v1";
+    if (embBaseUrl !== original.embedding.base_url) return true;
+    if (settings.embedding.model !== original.embedding.model) return true;
+    if (settings.embedding.api_key !== original.embedding.api_key) return true;
+
+    const rerBaseUrl = settings.reranker.base_url || "https://api.openai.com/v1";
+    if (rerBaseUrl !== original.reranker.base_url) return true;
+    if (settings.reranker.model !== original.reranker.model) return true;
+    if (settings.reranker.api_key !== original.reranker.api_key) return true;
+    if (settings.reranker.enabled !== original.reranker.enabled) return true;
+
+    if (settings.port !== original.port) return true;
+
+    return false;
+  })();
 
   if (loading) return (
     <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center" }}>
