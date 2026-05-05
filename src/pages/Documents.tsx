@@ -113,7 +113,7 @@ function SkeletonCard() {
 
 export default function Documents() {
   const { status, error } = useSidecar();
-  const { activeFolder, triggerRefreshFolders } = useFolderContext();
+  const { activeFolder, triggerRefreshFolders, refreshDocsKey } = useFolderContext();
   const navigate = useNavigate();
 
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -135,7 +135,7 @@ export default function Documents() {
     } finally {
       setLoading(false);
     }
-  }, [activeFolder]);
+  }, [activeFolder, refreshDocsKey]);
 
   useEffect(() => {
     if (status !== "ready") return;

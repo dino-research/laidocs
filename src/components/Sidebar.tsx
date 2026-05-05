@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { apiGet, apiPost } from "../lib/sidecar";
 import { useFolderContext } from "../context/FolderContext";
 import { useSidecar } from "../hooks/useSidecar";
+import { useUpload, PendingUpload } from "../context/UploadContext";
 
 interface Folder {
   path: string;
@@ -141,11 +142,70 @@ function ReloadButton() {
   );
 }
 
+const STAGE_LABELS: Record<string, { label: string; done: boolean; isError?: boolean }> = {
+  uploading:  { label: "uploading…",  done: false },
+  uploaded:   { label: "uploaded",    done: true  },
+  converting: { label: "converting…", done: false },
+  converted:  { label: "converted",   done: true  },
+  saving:     { label: "saving…",     done: false },
+  saved:      { label: "saved",       done: true  },
+  error:      { label: "failed",      done: true, isError: true },
+};
+
+function PendingUploadItem({ upload }: { upload: PendingUpload }) {
+  const info = STAGE_LABELS[upload.stage] ?? { label: upload.stage, done: false };
+  return (
+    <div style={{
+      padding: "6px 12px 6px 14px",
+      borderRadius: 7,
+      opacity: 0.9,
+    }}>
+      <div style={{
+        fontSize: 13,
+        color: "var(--text-secondary)",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        marginBottom: 3,
+      }}>
+        {upload.docTitle || upload.filename}
+      </div>
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        fontSize: 11,
+        color: info.isError ? "var(--error)" : info.done ? "var(--success)" : "var(--text-faint)",
+        letterSpacing: "0.4px",
+      }}>
+        {!info.done && !info.isError && (
+          <span
+            className="spin"
+            style={{
+              display: "inline-block",
+              width: 9,
+              height: 9,
+              border: "1.5px solid var(--border)",
+              borderTopColor: "var(--text-muted)",
+              borderRadius: "50%",
+              flexShrink: 0,
+            }}
+          />
+        )}
+        {info.isError && <span style={{ fontSize: 10 }}>✗</span>}
+        {info.done && !info.isError && <span style={{ fontSize: 10 }}>✓</span>}
+        {upload.error || info.label}
+      </div>
+    </div>
+  );
+}
+
 // ── Sidebar ────────────────────────────────────────────────────────
 export default function Sidebar() {
   const { activeFolder, setActiveFolder, refreshFoldersKey, triggerRefreshFolders } =
     useFolderContext();
   const { status } = useSidecar();
+  const { pendingUploads } = useUpload();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -245,6 +305,20 @@ export default function Sidebar() {
           <IconDocs />
           All Documents
         </NavItem>
+
+        {/* Pending uploads */}
+        {pendingUploads.length > 0 && (
+          <div style={{ marginTop: 8, marginBottom: 4 }}>
+            <div style={{ padding: "0 6px 6px" }}>
+              <span className="label-upper">Processing</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              {pendingUploads.map((upload) => (
+                <PendingUploadItem key={upload.clientId} upload={upload} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Search */}
         <div style={{ marginTop: 2 }}>
