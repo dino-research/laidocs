@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse
 from backend.core.config import LAIDOCS_HOME, get_settings
 from backend.core.database import init_db
 from backend.core.exceptions import LAIDocsError
-from backend.core.vault import VAULT_DIR
+from backend.core.vault import VAULT_DIR, ensure_assets_dir
 
 # ── CLI arguments ──────────────────────────────────────────────────
 
@@ -47,6 +47,11 @@ async def lifespan(app: FastAPI):
     VAULT_DIR.mkdir(parents=True, exist_ok=True)
     (LAIDOCS_HOME / "data").mkdir(parents=True, exist_ok=True)
     init_db()
+
+    # Mount vault assets directory as static files for image serving
+    from fastapi.staticfiles import StaticFiles
+    assets_path = ensure_assets_dir()
+    app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
 
     # Initialise LanceDB — this also auto-migrates the vector column schema
     # from the old variable-length list to FixedSizeList if needed.

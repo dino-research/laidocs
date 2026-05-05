@@ -13,10 +13,18 @@ from typing import Any
 from .config import LAIDOCS_HOME
 
 VAULT_DIR = LAIDOCS_HOME / "vault"
+ASSETS_DIR = VAULT_DIR / "assets"
 
 
 def _ensure_vault() -> None:
     VAULT_DIR.mkdir(parents=True, exist_ok=True)
+    ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_assets_dir() -> Path:
+    """Create and return the vault's assets directory (for extracted images)."""
+    ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+    return ASSETS_DIR
 
 
 # ── data class for documents ────────────────────────────────────────
