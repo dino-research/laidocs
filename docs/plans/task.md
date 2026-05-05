@@ -1,14 +1,10 @@
-# Docling Integration — Task Tracker
-
-Worktree: `.worktrees/feat-docling` | Branch: `feat/docling-integration`
+# Upload Progress — Task Tracker
 
 | # | Task | Status |
 |---|------|--------|
-| 1 | Install Docling, remove MarkItDown (`requirements.txt`) | done ✅ |
-| 2 | Add `assets/` dir + `ensure_assets_dir()` in vault + StaticFiles mount | done ✅ |
-| 3 | Implement `VaultPictureSerializer` | done ✅ |
-| 4 | Implement `DoclingConverter` service (full rewrite of `converter.py`) | done ✅ |
-| 5 | Update upload API endpoint (`documents.py`) | done ✅ |
-| 6 | Verify image rendering in ByteMD preview (browser smoke test) | skipped ⏭️ |
-| 7 | Fallback tests — LLM unavailable / exception | done ✅ |
-| 8 | Run full test suite + final integration smoke test | skipped ⏭️ |
+| 1 | Backend — SSE helper + streaming upload endpoint | done |
+| 2 | Frontend — SSE stream consumer in `api-upload.ts` | done |
+| 3 | Create `UploadContext` | done |
+| 4 | Update `UploadDialog` to use context | done |
+| 5 | Add pending items UI to Sidebar | done |
+| 6 | Verify full flow end-to-end | done |
