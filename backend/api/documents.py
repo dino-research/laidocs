@@ -16,14 +16,16 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Uploa
 from pydantic import BaseModel
 
 from ..core.database import get_db
-from ..core.vault import vault
-from ..services.converter import DocumentConverter
+import uuid
+
+from ..core.vault import vault, ASSETS_DIR
+from ..services.converter import DoclingConverter
 from ..services.crawler import WebCrawler
 from ..services.indexer import get_indexer
 
 # ── singletons ─────────────────────────────────────────────────────
 
-converter = DocumentConverter()
+converter = DoclingConverter()
 crawler = WebCrawler()
 
 # ── request models ────────────────────────────────────────────────
@@ -83,7 +85,12 @@ async def upload_document(
         tmp_path = tmp.name
 
     try:
-        markdown, title = converter.convert_file(tmp_path)
+        doc_id = str(uuid.uuid4())  # generate before conversion so image filenames match
+        markdown, title = converter.convert_file(
+            tmp_path,
+            doc_id=doc_id,
+            assets_dir=ASSETS_DIR,
+        )
 
         # If converter fell back to the temp-file stem, use the real filename instead
         original_stem = Path(file.filename).stem if file.filename else ""
@@ -100,6 +107,7 @@ async def upload_document(
             title=title or clean_filename.removesuffix(".md"),
             source_type="file",
             original_path=file.filename or "",
+            doc_id=doc_id,
         )
 
         # Keep SQLite FTS index in sync
