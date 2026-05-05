@@ -6,6 +6,7 @@ that updates the vector index (LanceDB) for the affected document.
 
 from __future__ import annotations
 
+import json as _json
 import os
 import re
 import tempfile
@@ -22,6 +23,12 @@ from ..core.vault import vault, ASSETS_DIR
 from ..services.converter import DoclingConverter
 from ..services.crawler import WebCrawler
 from ..services.indexer import get_indexer
+
+
+def _sse(stage: str, **extra) -> str:
+    """Format a single Server-Sent Event line."""
+    payload = {"stage": stage, **extra}
+    return f"data: {_json.dumps(payload)}\n\n"
 
 # ── singletons (lazy) ─────────────────────────────────────────────
 # DoclingConverter initialises the Docling pipeline (may load models) and
@@ -89,80 +96,91 @@ async def upload_document(
     file: UploadFile = File(...),
     folder: str = Form(""),
 ):
-    """Upload a file, convert to Markdown, and save to the vault."""
+    """Upload a file, convert to Markdown, and stream progress via SSE."""
+    from fastapi.responses import StreamingResponse
+
     ext = Path(file.filename).suffix.lower() if file.filename else ""
     if ext not in _ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
 
-    # Save uploaded bytes to a temp file for conversion
-    suffix = ext or ".bin"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
+    # Read file bytes eagerly (before streaming response starts)
+    content = await file.read()
+    original_filename = file.filename or "document"
 
-    try:
-        doc_id = str(uuid.uuid4())  # generate before conversion so image filenames match
-        markdown, title = get_converter().convert_file(
-            tmp_path,
-            doc_id=doc_id,
-            assets_dir=ASSETS_DIR,
-        )
+    async def _generate():
+        import tempfile, os
 
-        # If converter fell back to the temp-file stem, use the real filename instead
-        original_stem = Path(file.filename).stem if file.filename else ""
-        if not title or title.startswith("tmp") or title == Path(tmp_path).stem:
-            title = original_stem
+        yield _sse("uploading")
 
-        # Derive a clean .md filename from the original filename stem
-        clean_filename = original_stem + ".md" if original_stem else (file.filename or "document.md")
+        suffix = Path(original_filename).suffix or ".bin"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
 
-        meta = vault.save_document(
-            folder=folder or "unsorted",
-            filename=clean_filename,
-            content=markdown,
-            title=title or clean_filename.removesuffix(".md"),
-            source_type="file",
-            original_path=file.filename or "",
-            doc_id=doc_id,
-        )
+        yield _sse("uploaded")
 
-        # Keep SQLite FTS index in sync
-        with get_db() as conn:
-            conn.execute(
-                "INSERT OR IGNORE INTO folders (path, name) VALUES (?, ?)",
-                (meta.folder, meta.folder.split("/")[-1] or meta.folder),
-            )
-            conn.execute(
-                "INSERT OR REPLACE INTO documents (id, folder, filename, title, source_type, original_path, content) "
-                "VALUES (?,?,?,?,?,?,?)",
-                (
-                    meta.doc_id,
-                    meta.folder,
-                    meta.filename,
-                    meta.title,
-                    meta.source_type,
-                    meta.original_path,
-                    markdown,
-                ),
-            )
-
-        # Index into LanceDB in the background (non-blocking)
-        background_tasks.add_task(get_indexer().index_document, meta.doc_id, markdown)
-
-        return {
-            "id": meta.doc_id,
-            "title": meta.title,
-            "folder": meta.folder,
-            "filename": meta.filename,
-        }
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Conversion failed: {exc}")
-    finally:
         try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass  # already removed or never created
+            doc_id = str(uuid.uuid4())
+
+            yield _sse("converting")
+            markdown, title = get_converter().convert_file(
+                tmp_path,
+                doc_id=doc_id,
+                assets_dir=ASSETS_DIR,
+            )
+            yield _sse("converted")
+
+            original_stem = Path(original_filename).stem
+            if not title or title.startswith("tmp") or title == Path(tmp_path).stem:
+                title = original_stem
+            clean_filename = original_stem + ".md" if original_stem else (original_filename or "document.md")
+
+            yield _sse("saving")
+            meta = vault.save_document(
+                folder=folder or "unsorted",
+                filename=clean_filename,
+                content=markdown,
+                title=title or clean_filename.removesuffix(".md"),
+                source_type="file",
+                original_path=original_filename,
+                doc_id=doc_id,
+            )
+
+            with get_db() as conn:
+                conn.execute(
+                    "INSERT OR IGNORE INTO folders (path, name) VALUES (?, ?)",
+                    (meta.folder, meta.folder.split("/")[-1] or meta.folder),
+                )
+                conn.execute(
+                    "INSERT OR REPLACE INTO documents (id, folder, filename, title, source_type, original_path, content) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (meta.doc_id, meta.folder, meta.filename, meta.title,
+                     meta.source_type, meta.original_path, markdown),
+                )
+
+            background_tasks.add_task(get_indexer().index_document, meta.doc_id, markdown)
+
+            yield _sse("saved",
+                       id=meta.doc_id,
+                       title=meta.title,
+                       folder=meta.folder,
+                       filename=meta.filename)
+        except Exception as exc:
+            yield _sse("error", message=str(exc))
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @documents_router.post("/crawl")
