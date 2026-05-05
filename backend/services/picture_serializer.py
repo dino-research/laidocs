@@ -40,10 +40,10 @@ class VaultPictureSerializer(MarkdownPictureSerializer):
 
         img = item.get_image(doc)
         if img is not None:
-            filename = f"{self.doc_id}_{self._counter}.png"
+            # Increment first so filename and alt text share the same 1-based number.
             self._counter += 1
+            filename = f"{self.doc_id}_{self._counter}.png"
             img.save(self.assets_dir / filename)
-            # Display counter is 1-based for human-readable alt text
             parts.append(f"![Image {self._counter}](/assets/{filename})")
         else:
             parts.append("<!-- image not available -->")

@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from docling.datamodel.base_models import InputFormat
+from docling.datamodel.base_models import ConversionStatus, InputFormat
 from docling.datamodel.pipeline_options import (
     PdfPipelineOptions,
     PictureDescriptionApiOptions,
@@ -134,6 +134,10 @@ class DoclingConverter:
         assets_dir.mkdir(parents=True, exist_ok=True)
 
         result = self._converter.convert(file_path)
+        if result.status != ConversionStatus.SUCCESS:
+            raise ValueError(
+                f"Docling conversion failed (status={result.status}) for: {file_path}"
+            )
         doc = result.document
 
         serializer = MarkdownDocSerializer(

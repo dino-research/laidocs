@@ -6,12 +6,15 @@ from pathlib import Path
 
 def get_target_triple():
     # Run rustc -vV to get the host target triple
-    result = subprocess.run(['rustc', '-vV'], capture_output=True, text=True)
-    for line in result.stdout.splitlines():
-        if line.startswith('host:'):
-            return line.split(' ')[1].strip()
-    
-    # Fallback if rustc fails
+    try:
+        result = subprocess.run(['rustc', '-vV'], capture_output=True, text=True)
+        for line in result.stdout.splitlines():
+            if line.startswith('host:'):
+                return line.split(' ')[1].strip()
+    except FileNotFoundError:
+        pass  # rustc not installed; fall through to platform-based fallback
+
+    # Fallback if rustc fails or is not installed
     if sys.platform == "darwin":
         import platform
         if platform.machine() == "arm64":
@@ -51,7 +54,8 @@ def main():
         "--clean",
         "--noconfirm",
         # Explicitly add dependencies that might be missed by PyInstaller analysis
-        "--hidden-import", "markitdown",
+        "--hidden-import", "docling",
+        "--hidden-import", "docling_core",
         "--hidden-import", "pydantic",
         "--hidden-import", "lancedb",
         "--hidden-import", "uvicorn",

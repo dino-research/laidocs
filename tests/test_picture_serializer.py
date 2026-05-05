@@ -21,10 +21,10 @@ def test_serializer_saves_image_and_emits_markdown(tmp_path):
 
     result = serializer.serialize(item=item, doc_serializer=doc_serializer, doc=doc)
 
-    # Image should be saved
-    mock_img.save.assert_called_once_with(tmp_path / "doc1_0.png")
-    # Markdown should contain image reference
-    assert "![Image 1](/assets/doc1_0.png)" in result.text
+    # Image should be saved (1-based filename to match alt text)
+    mock_img.save.assert_called_once_with(tmp_path / "doc1_1.png")
+    # Markdown should contain image reference (filename and alt number are consistent)
+    assert "![Image 1](/assets/doc1_1.png)" in result.text
     # No description blockquote
     assert "> **Description:**" not in result.text
 
@@ -73,7 +73,7 @@ def test_serializer_counter_increments_across_calls(tmp_path):
     r1 = serializer.serialize(item=make_item(), doc_serializer=MagicMock(), doc=MagicMock())
     r2 = serializer.serialize(item=make_item(), doc_serializer=MagicMock(), doc=MagicMock())
 
-    assert "docX_0.png" in r1.text
-    assert "docX_1.png" in r2.text
+    assert "docX_1.png" in r1.text
+    assert "docX_2.png" in r2.text
     assert "Image 1" in r1.text
     assert "Image 2" in r2.text

@@ -23,10 +23,27 @@ from ..services.converter import DoclingConverter
 from ..services.crawler import WebCrawler
 from ..services.indexer import get_indexer
 
-# ── singletons ─────────────────────────────────────────────────────
+# ── singletons (lazy) ─────────────────────────────────────────────
+# DoclingConverter initialises the Docling pipeline (may load models) and
+# WebCrawler starts Playwright — both are deferred until first use so startup
+# latency stays low and tests that don't exercise these paths aren't penalised.
 
-converter = DoclingConverter()
-crawler = WebCrawler()
+_converter: DoclingConverter | None = None
+_crawler: WebCrawler | None = None
+
+
+def get_converter() -> DoclingConverter:
+    global _converter
+    if _converter is None:
+        _converter = DoclingConverter()
+    return _converter
+
+
+def get_crawler() -> WebCrawler:
+    global _crawler
+    if _crawler is None:
+        _crawler = WebCrawler()
+    return _crawler
 
 # ── request models ────────────────────────────────────────────────
 
@@ -86,7 +103,7 @@ async def upload_document(
 
     try:
         doc_id = str(uuid.uuid4())  # generate before conversion so image filenames match
-        markdown, title = converter.convert_file(
+        markdown, title = get_converter().convert_file(
             tmp_path,
             doc_id=doc_id,
             assets_dir=ASSETS_DIR,
@@ -142,7 +159,10 @@ async def upload_document(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Conversion failed: {exc}")
     finally:
-        os.unlink(tmp_path)
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass  # already removed or never created
 
 
 @documents_router.post("/crawl")
@@ -153,7 +173,7 @@ async def crawl_url(background_tasks: BackgroundTasks, body: CrawlRequest):
         raise HTTPException(status_code=400, detail="Invalid URL: must start with http:// or https://")
 
     try:
-        markdown, title = await crawler.crawl(body.url)
+        markdown, title = await get_crawler().crawl(body.url)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Failed to crawl URL: {exc}") from exc
 
