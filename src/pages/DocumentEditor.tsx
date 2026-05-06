@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSidecar } from "../hooks/useSidecar";
-import { apiGet, apiPut, apiDelete } from "../lib/sidecar";
+import { apiGet, apiPut, apiDelete, API_BASE } from "../lib/sidecar";
 import { Editor } from "@bytemd/react";
 import gfm from "@bytemd/plugin-gfm";
 import "bytemd/dist/index.css";
@@ -21,6 +21,29 @@ interface Document {
   created_at: string;
   updated_at: string;
 }
+
+// ── Remark plugin: rewrite /assets/ image URLs to backend ─────────
+// ByteMD's preview pane resolves image src against the frontend origin.
+// This plugin rewrites vault asset paths to point at the FastAPI backend.
+function remarkRewriteAssets() {
+  return (tree: any) => {
+    // Simple recursive walker — avoids unist-util-visit dependency
+    function walk(node: any) {
+      if (node.type === "image" && node.url?.startsWith("/assets/")) {
+        node.url = `${API_BASE}${node.url}`;
+      }
+      if (node.children) {
+        for (const child of node.children) walk(child);
+      }
+    }
+    walk(tree);
+  };
+}
+
+// ByteMD plugin interface — remark processor
+const assetRewritePlugin = (): any => ({
+  remark: (processor: any) => processor.use(remarkRewriteAssets),
+});
 
 // ── SVG Icons ─────────────────────────────────────────────────────
 const IconBack = () => (
@@ -66,7 +89,7 @@ const saveStatusConfig: Record<SaveStatus, { text: string; color: string }> = {
   error:   { text: "Save failed",     color: "var(--error)" },
 };
 
-const plugins = [gfm()];
+const plugins = [gfm(), assetRewritePlugin()];
 
 export default function DocumentEditor() {
   const { id } = useParams<{ id: string }>();

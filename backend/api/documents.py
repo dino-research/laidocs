@@ -108,7 +108,7 @@ async def upload_document(
     original_filename = file.filename or "document"
 
     async def _generate():
-        import tempfile, os
+        import tempfile, os, asyncio
 
         yield _sse("uploading")
 
@@ -123,7 +123,8 @@ async def upload_document(
             doc_id = str(uuid.uuid4())
 
             yield _sse("converting")
-            markdown, title = get_converter().convert_file(
+            markdown, title = await asyncio.to_thread(
+                get_converter().convert_file,
                 tmp_path,
                 doc_id=doc_id,
                 assets_dir=ASSETS_DIR,
@@ -136,7 +137,8 @@ async def upload_document(
             clean_filename = original_stem + ".md" if original_stem else (original_filename or "document.md")
 
             yield _sse("saving")
-            meta = vault.save_document(
+            meta = await asyncio.to_thread(
+                vault.save_document,
                 folder=folder or "unsorted",
                 filename=clean_filename,
                 content=markdown,
@@ -146,17 +148,20 @@ async def upload_document(
                 doc_id=doc_id,
             )
 
-            with get_db() as conn:
-                conn.execute(
-                    "INSERT OR IGNORE INTO folders (path, name) VALUES (?, ?)",
-                    (meta.folder, meta.folder.split("/")[-1] or meta.folder),
-                )
-                conn.execute(
-                    "INSERT OR REPLACE INTO documents (id, folder, filename, title, source_type, original_path, content) "
-                    "VALUES (?,?,?,?,?,?,?)",
-                    (meta.doc_id, meta.folder, meta.filename, meta.title,
-                     meta.source_type, meta.original_path, markdown),
-                )
+            def _db_save():
+                with get_db() as conn:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO folders (path, name) VALUES (?, ?)",
+                        (meta.folder, meta.folder.split("/")[-1] or meta.folder),
+                    )
+                    conn.execute(
+                        "INSERT OR REPLACE INTO documents (id, folder, filename, title, source_type, original_path, content) "
+                        "VALUES (?,?,?,?,?,?,?)",
+                        (meta.doc_id, meta.folder, meta.filename, meta.title,
+                         meta.source_type, meta.original_path, markdown),
+                    )
+
+            await asyncio.to_thread(_db_save)
 
             background_tasks.add_task(get_indexer().index_document, meta.doc_id, markdown)
 
