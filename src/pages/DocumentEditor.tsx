@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSidecar } from "../hooks/useSidecar";
 import { apiGet, apiPut, apiDelete, API_BASE } from "../lib/sidecar";
@@ -22,15 +22,39 @@ interface Document {
   updated_at: string;
 }
 
-// ── Remark plugin: rewrite /assets/ image URLs to backend ─────────
+// ── Remark plugin: rewrite image URLs for preview ─────────────────
 // ByteMD's preview pane resolves image src against the frontend origin.
-// This plugin rewrites vault asset paths to point at the FastAPI backend.
-function remarkRewriteAssets() {
+// This plugin:
+//   1. Rewrites /assets/* paths to the FastAPI backend (uploaded files)
+//   2. Resolves relative URLs against the source origin (crawled pages)
+function remarkRewriteImages(sourceUrl?: string) {
+  // Pre-compute the source origin for relative URL resolution
+  let sourceOrigin = "";
+  if (sourceUrl) {
+    try {
+      const u = new URL(sourceUrl);
+      sourceOrigin = u.origin;
+    } catch { /* invalid URL — skip resolution */ }
+  }
+
   return (tree: any) => {
-    // Simple recursive walker — avoids unist-util-visit dependency
     function walk(node: any) {
-      if (node.type === "image" && node.url?.startsWith("/assets/")) {
-        node.url = `${API_BASE}${node.url}`;
+      if (node.type === "image" && node.url) {
+        if (node.url.startsWith("/assets/")) {
+          // Vault asset → proxy through backend
+          node.url = `${API_BASE}${node.url}`;
+        } else if (
+          sourceOrigin &&
+          !node.url.startsWith("http://") &&
+          !node.url.startsWith("https://") &&
+          !node.url.startsWith("data:") &&
+          !node.url.startsWith("#")
+        ) {
+          // Relative URL from crawled page → resolve against source origin
+          try {
+            node.url = new URL(node.url, sourceUrl).href;
+          } catch { /* malformed — leave as-is */ }
+        }
       }
       if (node.children) {
         for (const child of node.children) walk(child);
@@ -40,10 +64,12 @@ function remarkRewriteAssets() {
   };
 }
 
-// ByteMD plugin interface — remark processor
-const assetRewritePlugin = (): any => ({
-  remark: (processor: any) => processor.use(remarkRewriteAssets),
-});
+// ByteMD plugin factory — pass sourceUrl for URL-sourced documents
+function imageRewritePlugin(sourceUrl?: string): any {
+  return {
+    remark: (processor: any) => processor.use(() => remarkRewriteImages(sourceUrl)),
+  };
+}
 
 // ── SVG Icons ─────────────────────────────────────────────────────
 const IconBack = () => (
@@ -89,7 +115,7 @@ const saveStatusConfig: Record<SaveStatus, { text: string; color: string }> = {
   error:   { text: "Save failed",     color: "var(--error)" },
 };
 
-const plugins = [gfm(), assetRewritePlugin()];
+const basePlugins = [gfm()];
 
 export default function DocumentEditor() {
   const { id } = useParams<{ id: string }>();
@@ -108,6 +134,13 @@ export default function DocumentEditor() {
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resizeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Build plugins list — include source URL for URL-sourced docs so
+  // the remark plugin can resolve relative image paths.
+  const editorPlugins = useMemo(() => {
+    const sourceUrl = doc?.source_type === "url" ? doc.original_path : undefined;
+    return [...basePlugins, imageRewritePlugin(sourceUrl)];
+  }, [doc?.source_type, doc?.original_path]);
 
   useEffect(() => {
     if (status !== "ready" || !id) return;
@@ -260,6 +293,27 @@ export default function DocumentEditor() {
           {statusInfo.text}
         </span>
 
+        {/* Download */}
+        <button
+          className="btn-icon"
+          title="Download as .md"
+          onClick={() => {
+            const blob = new Blob([content], { type: "text/markdown" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = doc?.filename || "document.md";
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        </button>
+
         {/* Chat toggle */}
         <button
           id="chat-with-doc-btn"
@@ -305,7 +359,7 @@ export default function DocumentEditor() {
           <Editor
             key={editorKey}
             value={content}
-            plugins={plugins}
+            plugins={editorPlugins}
             onChange={handleContentChange}
           />
         </div>
