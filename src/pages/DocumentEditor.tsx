@@ -7,6 +7,7 @@ import gfm from "@bytemd/plugin-gfm";
 import "bytemd/dist/index.css";
 import "../styles/bytemd-theme.css";
 import ChatPanel from "../components/ChatPanel";
+import { open } from "@tauri-apps/plugin-shell";
 
 type SaveStatus = "saved" | "saving" | "unsaved" | "error";
 
@@ -178,6 +179,26 @@ export default function DocumentEditor() {
   }, [doc?.content, saveContent]);
 
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
+  const handleEditorClick = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    const anchor = target.closest("a");
+    
+    if (anchor) {
+      e.preventDefault();
+      const href = anchor.getAttribute("href");
+      if (!href) return;
+      
+      if (href.startsWith("http://") || href.startsWith("https://")) {
+        open(href);
+      } else if (doc?.source_type === "url" && doc.original_path) {
+        try {
+          const resolvedUrl = new URL(href, doc.original_path).href;
+          open(resolvedUrl);
+        } catch { /* ignore malformed */ }
+      }
+    }
+  }, [doc?.source_type, doc?.original_path]);
 
   // Force ByteMD/CodeMirror to remount when container is resized (e.g. window maximize).
   // CodeMirror v5 calculates heights at mount time and does not auto-reflow on resize.
@@ -351,6 +372,7 @@ export default function DocumentEditor() {
           ref={editorContainerRef}
           className="bytemd-wrapper"
           style={{ position: "relative", flex: 1, overflow: "hidden", minWidth: 0, background: "var(--bg)" }}
+          onClick={handleEditorClick}
         >
           <Editor
             key={editorKey}
