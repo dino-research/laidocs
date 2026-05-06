@@ -1,3 +1,7 @@
+import { useState } from "react";
+import UploadDialog from "../components/UploadDialog";
+import CrawlDialog from "../components/CrawlDialog";
+
 // ── Icons ─────────────────────────────────────────────────────────
 
 const IconDocument = () => (
@@ -10,9 +14,28 @@ const IconDocument = () => (
   </svg>
 );
 
+const IconUpload = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="17 8 12 3 7 8" />
+    <line x1="12" y1="3" x2="12" y2="15" />
+  </svg>
+);
+
+const IconGlobe = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="2" y1="12" x2="22" y2="12" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </svg>
+);
+
 // ── WelcomePanel ──────────────────────────────────────────────────
 
 export default function WelcomePanel() {
+  const [showUpload, setShowUpload] = useState(false);
+  const [showCrawl, setShowCrawl] = useState(false);
+
   return (
     <div
       style={{
@@ -44,7 +67,7 @@ export default function WelcomePanel() {
             letterSpacing: "-0.3px",
           }}
         >
-          Select a document
+          Welcome to LaiDocs
         </h2>
 
         <p
@@ -55,32 +78,79 @@ export default function WelcomePanel() {
             margin: "0 0 28px",
           }}
         >
-          Choose a file from the Explorer, or create a new one using the{" "}
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ verticalAlign: "-1px", display: "inline" }}>
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="12" y1="11" x2="12" y2="17" />
-            <line x1="9" y1="14" x2="15" y2="14" />
-          </svg>{" "}
-          button in the sidebar.
+          Select a file from the Explorer, or get started by adding a new document to your workspace.
         </p>
 
-        {/* Keyboard hints */}
-        <div style={{ display: "flex", gap: 16 }}>
-          <span style={{ fontSize: 11, color: "var(--text-faint)" }}>
-            Upload files or crawl URLs from the{" "}
-            <kbd style={{
+        {/* Action Buttons */}
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            onClick={() => setShowUpload(true)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 16px",
               background: "var(--surface-alt)",
               border: "1px solid var(--border)",
-              borderRadius: 3,
-              padding: "1px 5px",
-              fontSize: 10,
-              fontFamily: "'Geist Mono', monospace",
-            }}>Documents</kbd>{" "}
-            page
-          </span>
+              borderRadius: "var(--radius-pill)",
+              color: "var(--text-primary)",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "var(--surface-hover)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--surface-alt)";
+            }}
+          >
+            <IconUpload />
+            Upload File
+          </button>
+
+          <button
+            onClick={() => setShowCrawl(true)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 16px",
+              background: "var(--surface-alt)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-pill)",
+              color: "var(--text-primary)",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "var(--surface-hover)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "var(--surface-alt)";
+            }}
+          >
+            <IconGlobe />
+            Crawl URL
+          </button>
         </div>
       </div>
+
+      <UploadDialog
+        open={showUpload}
+        onClose={() => setShowUpload(false)}
+        initialFolder="unsorted"
+        onUploadSuccess={() => setShowUpload(false)}
+      />
+      <CrawlDialog
+        open={showCrawl}
+        onClose={() => setShowCrawl(false)}
+        initialFolder="unsorted"
+        onCrawlSuccess={() => setShowCrawl(false)}
+      />
     </div>
   );
 }

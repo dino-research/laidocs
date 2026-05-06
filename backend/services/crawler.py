@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,7 @@ class WebCrawler:
             raise RuntimeError(f"Crawl failed: {result.error_message}")
 
         markdown: str = result.markdown_v2.raw_markdown if result.markdown_v2 else (result.markdown or "")
+        markdown = self._resolve_image_urls(markdown, url)
         title = self._extract_title(markdown, url)
         return markdown, title
 
@@ -79,10 +80,37 @@ class WebCrawler:
 
         html = resp.text
         markdown = html2text(html)
+        markdown = self._resolve_image_urls(markdown, url)
         title = self._extract_title(markdown, url)
         return markdown, title
 
     # ── helpers ─────────────────────────────────────────────────────
+
+    @staticmethod
+    def _resolve_image_urls(markdown: str, base_url: str) -> str:
+        """Resolve relative URLs in Markdown image/link syntax to absolute.
+
+        Crawled pages produce markdown with relative paths like
+        ``![alt](/static/images/cli.svg)`` which won't render in the
+        local preview.  This resolves them against *base_url* so the
+        markdown is self-contained.
+
+        Only relative URLs are touched — already-absolute ``http(s)://``
+        and ``data:`` URIs are left untouched.
+        """
+        # Match both ![alt](url) images and [text](url) links
+        _MD_URL_RE = re.compile(r"(!?\[[^\]]*\])\(([^)]+)\)")
+
+        def _resolve(m: re.Match) -> str:
+            prefix = m.group(1)  # ![alt] or [text]
+            href = m.group(2).strip()
+            # Skip already-absolute, data URIs, and anchor-only links
+            if href.startswith(("http://", "https://", "data:", "#", "mailto:")):
+                return m.group(0)
+            resolved = urljoin(base_url, href)
+            return f"{prefix}({resolved})"
+
+        return _MD_URL_RE.sub(_resolve, markdown)
 
     @staticmethod
     def _extract_title(markdown: str, url: str) -> str:

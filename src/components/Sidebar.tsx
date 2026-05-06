@@ -7,13 +7,10 @@ import { useUpload, PendingUpload } from "../context/UploadContext";
 import FileTree, { FolderNode } from "./FileTree";
 
 // ── SVG Icons ──────────────────────────────────────────────────────
-const IconDocs = () => (
+const IconHome = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-    <polyline points="14 2 14 8 20 8"/>
-    <line x1="16" y1="13" x2="8" y2="13"/>
-    <line x1="16" y1="17" x2="8" y2="17"/>
-    <line x1="10" y1="9" x2="8" y2="9"/>
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+    <polyline points="9 22 9 12 15 12 15 22"/>
   </svg>
 );
 
@@ -360,10 +357,10 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "10px 8px 0" }}>
-        {/* All Documents */}
+        {/* Home */}
         <NavItem active={isDocsPage && activeFolder === null} onClick={() => { setActiveFolder(null); navigate("/"); }}>
-          <IconDocs />
-          All Documents
+          <IconHome />
+          Home
         </NavItem>
 
         {/* Pending uploads */}

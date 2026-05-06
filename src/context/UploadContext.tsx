@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useRef, ReactNode } from "react";
-import { apiUploadStream, UploadStageEvent } from "../lib/api-upload";
+import { apiUploadStream, apiCrawlStream, UploadStageEvent, CrawlStageEvent } from "../lib/api-upload";
 import { useFolderContext } from "./FolderContext";
 
 export interface PendingUpload {
@@ -8,7 +8,7 @@ export interface PendingUpload {
   /** Original filename shown while pending */
   filename: string;
   /** Current stage label */
-  stage: UploadStageEvent["stage"];
+  stage: UploadStageEvent["stage"] | CrawlStageEvent["stage"];
   /** Populated once "saved" event arrives */
   docId?: string;
   docTitle?: string;
@@ -19,6 +19,7 @@ export interface PendingUpload {
 interface UploadContextValue {
   pendingUploads: PendingUpload[];
   startUpload: (file: File, folder: string) => void;
+  startCrawl: (url: string, folder: string) => void;
 }
 
 const UploadContext = createContext<UploadContextValue | null>(null);
@@ -78,8 +79,64 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     [triggerRefreshDocs, triggerRefreshFolders]
   );
 
+  const startCrawl = useCallback(
+    (url: string, folder: string) => {
+      const clientId = `crawl-${++counterRef.current}`;
+
+      // Derive a display name from the URL
+      let displayName: string;
+      try {
+        const parsed = new URL(url);
+        displayName = parsed.hostname + (parsed.pathname !== "/" ? parsed.pathname : "");
+      } catch {
+        displayName = url;
+      }
+
+      // Add pending entry immediately
+      setPendingUploads((prev) => [
+        ...prev,
+        { clientId, filename: displayName, stage: "crawling" },
+      ]);
+
+      const updateStage = (update: Partial<PendingUpload>) => {
+        setPendingUploads((prev) =>
+          prev.map((u) => (u.clientId === clientId ? { ...u, ...update } : u))
+        );
+      };
+
+      apiCrawlStream(url, folder, (event) => {
+        if (event.stage === "saved") {
+          updateStage({
+            stage: "saved",
+            docId: event.id,
+            docTitle: event.title,
+            docFolder: event.folder,
+          });
+          triggerRefreshDocs();
+          triggerRefreshFolders();
+          setTimeout(() => {
+            setPendingUploads((prev) => prev.filter((u) => u.clientId !== clientId));
+          }, 2000);
+        } else if (event.stage === "error") {
+          updateStage({ stage: "error", error: event.message });
+          setTimeout(() => {
+            setPendingUploads((prev) => prev.filter((u) => u.clientId !== clientId));
+          }, 5000);
+        } else {
+          updateStage({ stage: event.stage });
+        }
+      }).catch((err) => {
+        updateStage({ stage: "error", error: err instanceof Error ? err.message : "Crawl failed" });
+        setTimeout(() => {
+          setPendingUploads((prev) => prev.filter((u) => u.clientId !== clientId));
+        }, 5000);
+      });
+    },
+    [triggerRefreshDocs, triggerRefreshFolders]
+  );
+
   return (
-    <UploadContext.Provider value={{ pendingUploads, startUpload }}>
+    <UploadContext.Provider value={{ pendingUploads, startUpload, startCrawl }}>
       {children}
     </UploadContext.Provider>
   );

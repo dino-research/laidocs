@@ -1,10 +1,11 @@
-# Upload Progress — Task Tracker
+# IDE File Tree — Task Tracker
 
 | # | Task | Status |
 |---|------|--------|
-| 1 | Backend — SSE helper + streaming upload endpoint | done |
-| 2 | Frontend — SSE stream consumer in `api-upload.ts` | done |
-| 3 | Create `UploadContext` | done |
-| 4 | Update `UploadDialog` to use context | done |
-| 5 | Add pending items UI to Sidebar | done |
-| 6 | Verify full flow end-to-end | done |
+| 1 | Backend: tree endpoint + create-document API | done |
+| 2 | FileTree component | done |
+| 3 | Resizable sidebar (drag + collapse) | done |
+| 4 | Integrate FileTree into Sidebar | done |
+| 5 | WelcomePanel + route updates | done |
+| 6 | Download button in editor | done |
+| 7 | Cleanup and polish | done |

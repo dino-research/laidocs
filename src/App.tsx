@@ -3,7 +3,6 @@ import { FolderProvider } from "./context/FolderContext";
 import { UploadProvider } from "./context/UploadContext";
 import Layout from "./components/Layout";
 import WelcomePanel from "./pages/WelcomePanel";
-import Documents from "./pages/Documents";
 import DocumentEditor from "./pages/DocumentEditor";
 import Search from "./pages/Search";
 import Settings from "./pages/Settings";
@@ -16,7 +15,6 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Layout />}>
               <Route index element={<WelcomePanel />} />
-              <Route path="documents" element={<Documents />} />
               <Route path="doc/:id" element={<DocumentEditor />} />
               <Route path="search" element={<Search />} />
               <Route path="settings" element={<Settings />} />
