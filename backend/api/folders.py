@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 from ..core.database import get_db
 from ..core.vault import VAULT_DIR, vault
-from ..models.document import FolderCreate, FolderNode, FolderRename
+from ..models.document import DocumentSummary, FolderCreate, FolderNode, FolderRename
 
 router = APIRouter(prefix="/api/folders", tags=["folders"])
 
@@ -22,6 +22,30 @@ def _count_documents(folder_path: str) -> int:
     if not fp.exists():
         return 0
     return len(list(fp.glob("*.meta.json")))
+
+
+def _get_folder_documents(folder_path: str) -> list[DocumentSummary]:
+    """Get document summaries for a specific folder (non-recursive)."""
+    import json
+
+    fp = VAULT_DIR / folder_path
+    if not fp.exists():
+        return []
+    docs: list[DocumentSummary] = []
+    for meta_file in sorted(fp.glob("*.meta.json")):
+        try:
+            data = json.loads(meta_file.read_text(encoding="utf-8"))
+            docs.append(
+                DocumentSummary(
+                    id=data.get("doc_id", ""),
+                    title=data.get("title", ""),
+                    filename=data.get("filename", ""),
+                    source_type=data.get("source_type", "file"),
+                )
+            )
+        except (json.JSONDecodeError, OSError):
+            continue
+    return docs
 
 
 # ── Routes ───────────────────────────────────────────────────────
@@ -42,6 +66,41 @@ def list_folders():
             )
         )
     return result
+
+
+@router.get("/tree", response_model=list[FolderNode])
+def get_folder_tree():
+    """Return a nested tree of all folders with their documents."""
+    folders = vault.list_folders()
+
+    # Build lookup: path -> FolderNode
+    node_map: dict[str, FolderNode] = {}
+    for f in folders:
+        path = f["path"]
+        node_map[path] = FolderNode(
+            path=path,
+            name=f["name"],
+            parent_path=f.get("parent_path"),
+            document_count=_count_documents(path),
+            documents=_get_folder_documents(path),
+        )
+
+    # Build tree: attach children to parents
+    roots: list[FolderNode] = []
+    for path, node in node_map.items():
+        parent = node.parent_path
+        if parent and parent in node_map:
+            node_map[parent].children.append(node)
+        else:
+            roots.append(node)
+
+    # Sort: folders alphabetically at each level
+    def _sort_tree(nodes: list[FolderNode]) -> list[FolderNode]:
+        for n in nodes:
+            n.children = _sort_tree(n.children)
+        return sorted(nodes, key=lambda n: n.name.lower())
+
+    return _sort_tree(roots)
 
 
 @router.post("/", response_model=FolderNode, status_code=201)

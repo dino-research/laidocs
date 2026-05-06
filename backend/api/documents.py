@@ -60,6 +60,12 @@ class CrawlRequest(BaseModel):
     folder: str = "unsorted"
 
 
+class CreateDocumentRequest(BaseModel):
+    filename: str
+    folder: str = "unsorted"
+    title: str | None = None
+
+
 # ── allowed file extensions ────────────────────────────────────────
 
 _ALLOWED_EXTENSIONS = {
@@ -88,6 +94,55 @@ async def list_documents(folder: str | None = None):
         if "id" not in doc and "doc_id" in doc:
             doc["id"] = doc["doc_id"]
     return docs
+
+
+@documents_router.post("/create")
+async def create_document(body: CreateDocumentRequest):
+    """Create a new empty .md document."""
+    import asyncio
+
+    doc_id = str(uuid.uuid4())
+    filename = body.filename.strip()
+    if not filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+    if not filename.endswith(".md"):
+        filename += ".md"
+
+    title = body.title or filename.removesuffix(".md")
+    folder = body.folder or "unsorted"
+
+    meta = await asyncio.to_thread(
+        vault.save_document,
+        folder=folder,
+        filename=filename,
+        content="",
+        title=title,
+        source_type="file",
+        original_path="",
+        doc_id=doc_id,
+    )
+
+    def _db_save():
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO folders (path, name) VALUES (?, ?)",
+                (meta.folder, meta.folder.split("/")[-1] or meta.folder),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO documents (id, folder, filename, title, source_type, original_path, content) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (meta.doc_id, meta.folder, meta.filename, meta.title,
+                 meta.source_type, meta.original_path, ""),
+            )
+
+    await asyncio.to_thread(_db_save)
+
+    return {
+        "id": meta.doc_id,
+        "title": meta.title,
+        "folder": meta.folder,
+        "filename": meta.filename,
+    }
 
 
 @documents_router.post("/upload")
@@ -190,58 +245,75 @@ async def upload_document(
 
 @documents_router.post("/crawl")
 async def crawl_url(background_tasks: BackgroundTasks, body: CrawlRequest):
-    """Crawl a URL, convert to Markdown, and save to the vault."""
+    """Crawl a URL, convert to Markdown, and stream progress via SSE."""
+    from fastapi.responses import StreamingResponse
+
     parsed = urlparse(body.url)
     if not parsed.scheme or parsed.scheme not in ("http", "https"):
         raise HTTPException(status_code=400, detail="Invalid URL: must start with http:// or https://")
 
-    try:
-        markdown, title = await get_crawler().crawl(body.url)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to crawl URL: {exc}") from exc
+    # Capture request data before streaming starts
+    url = body.url
+    folder = body.folder
 
-    # Derive a safe filename from the title
-    filename = re.sub(r"[^\w\-.]", "-", title)[:50].strip("-") + ".md"
-    if filename == ".md":
-        filename = "untitled.md"
+    async def _generate():
+        import asyncio
 
-    meta = vault.save_document(
-        folder=body.folder,
-        filename=filename,
-        content=markdown,
-        title=title,
-        source_type="url",
-        original_path=body.url,
+        yield _sse("crawling")
+
+        try:
+            markdown, title = await get_crawler().crawl(url)
+            yield _sse("crawled")
+
+            # Derive a safe filename from the title
+            filename = re.sub(r"[^\w\-.]", "-", title)[:50].strip("-") + ".md"
+            if filename == ".md":
+                filename = "untitled.md"
+
+            yield _sse("saving")
+            meta = await asyncio.to_thread(
+                vault.save_document,
+                folder=folder,
+                filename=filename,
+                content=markdown,
+                title=title,
+                source_type="url",
+                original_path=url,
+            )
+
+            def _db_save():
+                with get_db() as conn:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO folders (path, name) VALUES (?, ?)",
+                        (meta.folder, meta.folder.split("/")[-1] or meta.folder),
+                    )
+                    conn.execute(
+                        "INSERT OR REPLACE INTO documents (id, folder, filename, title, source_type, original_path, content) "
+                        "VALUES (?,?,?,?,?,?,?)",
+                        (meta.doc_id, meta.folder, meta.filename, meta.title,
+                         meta.source_type, meta.original_path, markdown),
+                    )
+
+            await asyncio.to_thread(_db_save)
+
+            background_tasks.add_task(get_indexer().index_document, meta.doc_id, markdown)
+
+            yield _sse("saved",
+                       id=meta.doc_id,
+                       title=meta.title,
+                       folder=meta.folder,
+                       filename=meta.filename)
+        except Exception as exc:
+            yield _sse("error", message=str(exc))
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
-
-    with get_db() as conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO folders (path, name) VALUES (?, ?)",
-            (meta.folder, meta.folder.split("/")[-1] or meta.folder),
-        )
-        conn.execute(
-            "INSERT OR REPLACE INTO documents (id, folder, filename, title, source_type, original_path, content) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (
-                meta.doc_id,
-                meta.folder,
-                meta.filename,
-                meta.title,
-                meta.source_type,
-                meta.original_path,
-                markdown,
-            ),
-        )
-
-    # Index into LanceDB in the background
-    background_tasks.add_task(get_indexer().index_document, meta.doc_id, markdown)
-
-    return {
-        "id": meta.doc_id,
-        "title": meta.title,
-        "folder": meta.folder,
-        "filename": meta.filename,
-    }
 
 
 @documents_router.get("/{doc_id}")
