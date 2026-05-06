@@ -41,6 +41,9 @@ export async function apiDelete<T>(path: string): Promise<T> {
   if (!res.ok) {
     throw new Error(`DELETE ${path} failed: ${res.status} ${res.statusText}`);
   }
+  if (res.status === 204) {
+    return {} as T;
+  }
   return res.json() as Promise<T>;
 }
 

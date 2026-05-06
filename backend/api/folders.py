@@ -130,6 +130,8 @@ def rename_folder(body: FolderRename):
         raise HTTPException(status_code=404, detail=str(exc))
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
 
     # Update SQLite — folder path
     with get_db() as db:
@@ -147,6 +149,8 @@ def delete_folder(path: str):
         vault.delete_folder(path)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
 
     with get_db() as db:
         # Remove documents belonging to this folder (FTS triggers handle cleanup)

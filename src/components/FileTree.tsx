@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiPut, apiDelete } from "../lib/sidecar";
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -26,6 +27,8 @@ interface FileTreeProps {
   activeFolder: string | null;
   onFolderClick: (path: string) => void;
   triggerRefreshFolders?: () => void;
+  onUploadToFolder?: (folderPath: string) => void;
+  onCrawlToFolder?: (folderPath: string) => void;
 }
 
 interface ContextMenuState {
@@ -141,6 +144,19 @@ function RenameInput({
   onCancel: () => void;
 }) {
   const [val, setVal] = useState(initialValue);
+  const submitted = useRef(false);
+
+  const handleSubmit = (v: string) => {
+    if (submitted.current) return;
+    submitted.current = true;
+    onSubmit(v);
+  };
+
+  const handleCancel = () => {
+    if (submitted.current) return;
+    submitted.current = true;
+    onCancel();
+  };
 
   return (
     <div style={{ paddingLeft: 8 + depth * INDENT_PX, paddingRight: 8, paddingBottom: 2, paddingTop: 2, display: "flex" }}>
@@ -149,10 +165,16 @@ function RenameInput({
         value={val}
         onChange={(e) => setVal(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") onSubmit(val);
-          if (e.key === "Escape") onCancel();
+          if (e.key === "Enter") {
+            e.preventDefault();
+            handleSubmit(val);
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            handleCancel();
+          }
         }}
-        onBlur={() => onSubmit(val)}
+        onBlur={() => handleSubmit(val)}
         className="warp-input"
         style={{ width: "100%", fontSize: 13, padding: "2px 6px", borderRadius: 4 }}
         onClick={(e) => e.stopPropagation()}
@@ -399,10 +421,12 @@ function TreeFolder({
 
 // ── FileTree (main export) ────────────────────────────────────────
 
-export default function FileTree({ tree, activeDocId, onFileClick, activeFolder, onFolderClick, triggerRefreshFolders }: FileTreeProps) {
+export default function FileTree({ tree, activeDocId, onFileClick, activeFolder, onFolderClick, triggerRefreshFolders, onUploadToFolder, onCrawlToFolder }: FileTreeProps) {
   const [expandedSet, setExpandedSet] = useState<Set<string>>(loadExpanded);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renameTarget, setRenameTarget] = useState<{ id: string, type: 'file' | 'folder' } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ContextMenuState['target'] | null>(null);
+  const navigate = useNavigate();
 
   // Persist expand state
   useEffect(() => {
@@ -452,30 +476,135 @@ export default function FileTree({ tree, activeDocId, onFileClick, activeFolder,
     }
   };
 
-  const handleDelete = async (target: ContextMenuState['target']) => {
-    const msg = target.type === 'folder' ? `Delete folder "${target.name}" and all its contents?` : `Delete document "${target.name}"?`;
-    if (!window.confirm(msg)) return;
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      if (target.type === 'folder') {
-        await apiDelete(`/api/folders/${target.path}`);
+      if (deleteTarget.type === 'folder') {
+        const encodedPath = deleteTarget.path.split('/').map(encodeURIComponent).join('/');
+        await apiDelete(`/api/folders/${encodedPath}`);
       } else {
-        await apiDelete(`/api/documents/${target.id}`);
+        await apiDelete(`/api/documents/${encodeURIComponent(deleteTarget.id)}`);
+        if (deleteTarget.id === activeDocId) {
+          navigate("/");
+        }
       }
       if (triggerRefreshFolders) triggerRefreshFolders();
     } catch (err) {
       alert("Failed to delete: " + (err as Error).message);
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
+  const renderOverlays = () => (
+    <>
+      {contextMenu && (
+        <div
+          style={{
+            position: "fixed",
+            left: contextMenu.x,
+            top: contextMenu.y,
+            background: "var(--surface-alt)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            zIndex: 1000,
+            minWidth: 120,
+            padding: 4,
+            display: "flex",
+            flexDirection: "column",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.target.type === 'folder' && onUploadToFolder && (
+            <button
+              className="btn-ghost"
+              style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4 }}
+              onClick={(e) => {
+                e.preventDefault();
+                onUploadToFolder(contextMenu.target.path);
+                setContextMenu(null);
+              }}
+            >
+              Upload File
+            </button>
+          )}
+          {contextMenu.target.type === 'folder' && onCrawlToFolder && (
+            <button
+              className="btn-ghost"
+              style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4 }}
+              onClick={(e) => {
+                e.preventDefault();
+                onCrawlToFolder(contextMenu.target.path);
+                setContextMenu(null);
+              }}
+            >
+              Crawl URL
+            </button>
+          )}
+          {contextMenu.target.type === 'folder' && (onUploadToFolder || onCrawlToFolder) && (
+            <div style={{ height: 1, background: "var(--border)", margin: "4px 8px" }} />
+          )}
+          <button
+            className="btn-ghost"
+            style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4 }}
+            onClick={(e) => {
+              e.preventDefault();
+              setRenameTarget({ id: contextMenu.target.id, type: contextMenu.target.type });
+              setContextMenu(null);
+            }}
+          >
+            Rename
+          </button>
+          <button
+            className="btn-ghost"
+            style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4, color: "var(--error)" }}
+            onClick={(e) => {
+              e.preventDefault();
+              setDeleteTarget(contextMenu.target);
+              setContextMenu(null);
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="dialog-overlay" onClick={(e) => { if (e.target === e.currentTarget) setDeleteTarget(null); }}>
+          <div className="dialog-panel" style={{ maxWidth: 400 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 500, color: "var(--text-primary)", margin: "0 0 16px 0" }}>
+              Delete {deleteTarget.type === 'folder' ? 'Folder' : 'Document'}
+            </h2>
+            <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 24, lineHeight: 1.5 }}>
+              Are you sure you want to delete {deleteTarget.type === 'folder' ? 'the folder' : 'the document'} <strong>"{deleteTarget.name}"</strong>?
+              {deleteTarget.type === 'folder' && " All contents inside this folder will also be deleted. This action cannot be undone."}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button onClick={(e) => { e.preventDefault(); setDeleteTarget(null); }} className="btn-ghost">Cancel</button>
+              <button onClick={(e) => { e.preventDefault(); confirmDelete(); }} className="btn-primary" style={{ background: "var(--error)", borderColor: "var(--error)" }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   if (tree.length === 0) {
     return (
-      <div style={{
-        padding: "8px 14px",
-        fontSize: 12,
-        color: "var(--text-faint)",
-        fontStyle: "italic",
-      }}>
-        No folders yet
+      <div style={{ position: "relative" }}>
+        <div style={{
+          padding: "16px",
+          textAlign: "center",
+          fontSize: 12,
+          color: "var(--text-faint)",
+          fontStyle: "italic",
+        }}>
+          No folders yet
+        </div>
+        {renderOverlays()}
       </div>
     );
   }
@@ -504,46 +633,7 @@ export default function FileTree({ tree, activeDocId, onFileClick, activeFolder,
         ))}
       </div>
 
-      {contextMenu && (
-        <div
-          style={{
-            position: "fixed",
-            left: contextMenu.x,
-            top: contextMenu.y,
-            background: "var(--surface-alt)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-            zIndex: 1000,
-            minWidth: 120,
-            padding: 4,
-            display: "flex",
-            flexDirection: "column",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            className="btn-ghost"
-            style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4 }}
-            onClick={() => {
-              setRenameTarget({ id: contextMenu.target.id, type: contextMenu.target.type });
-              setContextMenu(null);
-            }}
-          >
-            Rename
-          </button>
-          <button
-            className="btn-ghost"
-            style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4, color: "var(--error)" }}
-            onClick={() => {
-              handleDelete(contextMenu.target);
-              setContextMenu(null);
-            }}
-          >
-            Delete
-          </button>
-        </div>
-      )}
+      {renderOverlays()}
     </div>
   );
 }

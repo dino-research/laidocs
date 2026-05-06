@@ -15,6 +15,9 @@ from .config import LAIDOCS_HOME
 VAULT_DIR = LAIDOCS_HOME / "vault"
 ASSETS_DIR = VAULT_DIR / "assets"
 
+# System directories that should not appear in user-facing folder listings
+SYSTEM_DIRS = {"assets"}
+
 
 def _ensure_vault() -> None:
     VAULT_DIR.mkdir(parents=True, exist_ok=True)
@@ -106,6 +109,8 @@ class VaultManager:
     def delete_folder(self, folder: str) -> None:
         _ensure_vault()
         folder = _norm(folder)
+        if folder in SYSTEM_DIRS:
+            raise PermissionError(f"Cannot delete system folder: {folder}")
         fp = _folder_path(folder)
         if not fp.exists():
             raise FileNotFoundError(f"Folder not found: {folder}")
@@ -115,6 +120,10 @@ class VaultManager:
         _ensure_vault()
         folder = _norm(folder)
         new_folder = _norm(new_folder)
+        if folder in SYSTEM_DIRS:
+            raise PermissionError(f"Cannot rename system folder: {folder}")
+        if new_folder in SYSTEM_DIRS:
+            raise PermissionError(f"Cannot rename to system folder name: {new_folder}")
         src = _folder_path(folder)
         dst = _folder_path(new_folder)
         if not src.exists():
@@ -125,10 +134,15 @@ class VaultManager:
         return {"old_path": folder, "new_path": new_folder}
 
     def list_folders(self) -> list[dict[str, Any]]:
-        """Return a flat list of all folders in the vault."""
+        """Return a flat list of all folders in the vault.
+        
+        Excludes system directories (e.g. 'assets' used for extracted images).
+        """
         _ensure_vault()
         result: list[dict[str, Any]] = []
         for root, dirs, _files in os.walk(VAULT_DIR):
+            # Prune system dirs so os.walk doesn't descend into them
+            dirs[:] = [d for d in dirs if not (Path(root) == VAULT_DIR and d in SYSTEM_DIRS)]
             for d in sorted(dirs):
                 full = Path(root) / d
                 rel = str(full.relative_to(VAULT_DIR))

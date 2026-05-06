@@ -5,6 +5,8 @@ import { useFolderContext } from "../context/FolderContext";
 import { useSidecar } from "../hooks/useSidecar";
 import { useUpload, PendingUpload } from "../context/UploadContext";
 import FileTree, { FolderNode } from "./FileTree";
+import UploadDialog from "./UploadDialog";
+import CrawlDialog from "./CrawlDialog";
 
 const getFolderOfDoc = (folders: FolderNode[], docId: string): string | null => {
   for (const f of folders) {
@@ -226,6 +228,8 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
   const [newFileName, setNewFileName] = useState("");
   const [newFileError, setNewFileError] = useState("");
   const [creatingFile, setCreatingFile] = useState(false);
+  const [ctxUploadFolder, setCtxUploadFolder] = useState<string | null>(null);
+  const [ctxCrawlFolder, setCtxCrawlFolder] = useState<string | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -527,6 +531,8 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
             activeFolder={activeFolder}
             onFolderClick={(path) => setActiveFolder(path)}
             triggerRefreshFolders={triggerRefreshFolders}
+            onUploadToFolder={(folderPath) => setCtxUploadFolder(folderPath)}
+            onCrawlToFolder={(folderPath) => setCtxCrawlFolder(folderPath)}
           />
         </div>
       </nav>
@@ -541,6 +547,20 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
         </div>
         <ReloadButton />
       </div>
+
+      {/* Context-menu triggered dialogs */}
+      <UploadDialog
+        open={ctxUploadFolder !== null}
+        onClose={() => setCtxUploadFolder(null)}
+        onUploadSuccess={triggerRefreshFolders}
+        initialFolder={ctxUploadFolder}
+      />
+      <CrawlDialog
+        open={ctxCrawlFolder !== null}
+        onClose={() => setCtxCrawlFolder(null)}
+        onCrawlSuccess={triggerRefreshFolders}
+        initialFolder={ctxCrawlFolder}
+      />
     </aside>
   );
 }
