@@ -298,13 +298,9 @@ export default function DocumentEditor() {
           className="btn-icon"
           title="Download as .md"
           onClick={() => {
-            const blob = new Blob([content], { type: "text/markdown" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = doc?.filename || "document.md";
-            a.click();
-            URL.revokeObjectURL(url);
+            if (id) {
+              window.open(`${API_BASE}/api/documents/${id}/download`, "_blank");
+            }
           }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 
 from ..core.database import get_db
@@ -324,6 +324,25 @@ async def get_document(doc_id: str):
         raise HTTPException(status_code=404, detail="Document not found")
     content, meta = result
     return {"content": content, **meta.to_dict()}
+
+
+@documents_router.get("/{doc_id}/download")
+async def download_document(doc_id: str):
+    """Download a document as a .md file."""
+    result = vault.get_document(doc_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    content, meta = result
+    filename = meta.filename or f"{doc_id}.md"
+    if not filename.endswith(".md"):
+        filename += ".md"
+    return Response(
+        content=content,
+        media_type="text/markdown",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
 
 
 @documents_router.put("/{doc_id}")
