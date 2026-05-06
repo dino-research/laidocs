@@ -1,0 +1,1872 @@
+diff --git a/backend/api/documents.py b/backend/api/documents.py
+index d42cfd3..f08dde5 100644
+--- a/backend/api/documents.py
++++ b/backend/api/documents.py
+@@ -1,7 +1,7 @@
+ """Document CRUD endpoints -- upload, list, get, update, delete.
+ 
+ Auto-indexing: every mutating endpoint triggers an async background task
+-that updates the vector index (LanceDB) for the affected document.
++that builds the tree index for the affected document.
+ """
+ 
+ from __future__ import annotations
+@@ -22,7 +22,7 @@ import uuid
+ from ..core.vault import vault, ASSETS_DIR
+ from ..services.converter import DoclingConverter
+ from ..services.crawler import WebCrawler
+-from ..services.indexer import get_indexer
++from ..services.tree_index import build_tree_index
+ 
+ 
+ def _sse(stage: str, **extra) -> str:
+@@ -218,7 +218,18 @@ async def upload_document(
+ 
+             await asyncio.to_thread(_db_save)
+ 
+-            background_tasks.add_task(get_indexer().index_document, meta.doc_id, markdown)
++            # Build tree index in background
++            async def _build_and_store_tree(doc_id: str, md: str):
++                tree = await build_tree_index(md)
++                if tree:
++                    import json as _j
++                    with get_db() as conn:
++                        conn.execute(
++                            "UPDATE documents SET tree_index=? WHERE id=?",
++                            (_j.dumps(tree, ensure_ascii=False), doc_id),
++                        )
++
++            background_tasks.add_task(asyncio.run, _build_and_store_tree(meta.doc_id, markdown))
+ 
+             yield _sse("saved",
+                        id=meta.doc_id,
+@@ -296,7 +307,18 @@ async def crawl_url(background_tasks: BackgroundTasks, body: CrawlRequest):
+ 
+             await asyncio.to_thread(_db_save)
+ 
+-            background_tasks.add_task(get_indexer().index_document, meta.doc_id, markdown)
++            # Build tree index in background
++            async def _build_and_store_tree_crawl(doc_id: str, md: str):
++                tree = await build_tree_index(md)
++                if tree:
++                    import json as _j
++                    with get_db() as conn:
++                        conn.execute(
++                            "UPDATE documents SET tree_index=? WHERE id=?",
++                            (_j.dumps(tree, ensure_ascii=False), doc_id),
++                        )
++
++            background_tasks.add_task(asyncio.run, _build_and_store_tree_crawl(meta.doc_id, markdown))
+ 
+             yield _sse("saved",
+                        id=meta.doc_id,
+@@ -382,39 +404,32 @@ async def update_document(doc_id: str, body: dict, background_tasks: BackgroundT
+             (markdown, new_title, new_filename, doc_id),
+         )
+ 
+-    # Re-index in background
+-    background_tasks.add_task(get_indexer().index_document, doc_id, markdown)
++    # Rebuild tree index in background
++    import asyncio as _asyncio
+ 
+-    return {"id": doc_id, "updated": True}
++    async def _rebuild_tree(did: str, md: str):
++        tree = await build_tree_index(md)
++        import json as _j
++        with get_db() as conn:
++            conn.execute(
++                "UPDATE documents SET tree_index=? WHERE id=?",
++                (_j.dumps(tree, ensure_ascii=False) if tree else None, did),
++            )
+ 
++    background_tasks.add_task(_asyncio.run, _rebuild_tree(doc_id, markdown))
+ 
+-@documents_router.post("/reindex")
+-async def reindex_all_documents(background_tasks: BackgroundTasks):
+-    """Re-index all documents into the vector store.
++    return {"id": doc_id, "updated": True}
+ 
+-    Useful after a schema migration (e.g. the LanceDB vector column was
+-    recreated with the correct FixedSizeList type).  Runs in a background
+-    task so the response returns immediately.
+-    """
+-    def _do_reindex():
+-        indexer = get_indexer()
+-        results = indexer.reindex_all()
+-        total = sum(results.values())
+-        print(f"[reindex] Done: {len(results)} documents, {total} chunks")
+ 
+-    background_tasks.add_task(_do_reindex)
+-    return {"status": "reindex_started"}
+ 
+ 
+ @documents_router.delete("/{doc_id}")
+-async def delete_document(doc_id: str, background_tasks: BackgroundTasks):
+-    """Delete a document from the vault, SQLite, and vector index."""
++async def delete_document(doc_id: str):
++    """Delete a document from the vault and SQLite."""
+     try:
+         vault.delete_document(doc_id)
+         with get_db() as conn:
+             conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
+-        # Remove vectors in background
+-        background_tasks.add_task(get_indexer().remove_document, doc_id)
+         return {"deleted": True}
+     except FileNotFoundError:
+         raise HTTPException(status_code=404, detail="Document not found")
+diff --git a/backend/api/settings.py b/backend/api/settings.py
+index 089f1bf..d3e038d 100644
+--- a/backend/api/settings.py
++++ b/backend/api/settings.py
+@@ -1,4 +1,4 @@
+-"""Settings API — read/write config, test LLM & embedding connections."""
++"""Settings API — read/write config, test LLM connection."""
+ 
+ from __future__ import annotations
+ 
+@@ -17,15 +17,11 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
+ 
+ class _MaskedSettings(BaseModel):
+     llm: dict[str, Any]
+-    embedding: dict[str, Any]
+-    reranker: dict[str, Any]
+     port: int
+ 
+ 
+ class _SettingsUpdate(BaseModel):
+     llm: dict[str, Any] | None = None
+-    embedding: dict[str, Any] | None = None
+-    reranker: dict[str, Any] | None = None
+     port: int | None = None
+ 
+ 
+@@ -55,8 +51,6 @@ async def read_settings():
+     s = get_settings()
+     return _MaskedSettings(
+         llm=_mask(s.llm),
+-        embedding=_mask(s.embedding),
+-        reranker=_mask(s.reranker),
+         port=s.port,
+     )
+ 
+@@ -66,10 +60,6 @@ async def update_settings(body: _SettingsUpdate):
+     s = get_settings()
+     if body.llm is not None:
+         s.llm = s.llm.model_copy(update=body.llm)
+-    if body.embedding is not None:
+-        s.embedding = s.embedding.model_copy(update=body.embedding)
+-    if body.reranker is not None:
+-        s.reranker = s.reranker.model_copy(update=body.reranker)
+     if body.port is not None:
+         s.port = body.port
+     s.save_to_file()
+@@ -78,8 +68,6 @@ async def update_settings(body: _SettingsUpdate):
+     s2 = get_settings()
+     return _MaskedSettings(
+         llm=_mask(s2.llm),
+-        embedding=_mask(s2.embedding),
+-        reranker=_mask(s2.reranker),
+         port=s2.port,
+     )
+ 
+@@ -104,21 +92,3 @@ async def test_llm(body: _TestRequest):
+         return {"success": True, "response": reply}
+     except Exception as exc:
+         return {"success": False, "error": str(exc)}
+-
+-
+-@router.post("/test-embedding")
+-async def test_embedding(body: _TestRequest):
+-    """Send a tiny embedding request to validate embedding credentials."""
+-    s = get_settings()
+-    base_url = body.base_url or s.embedding.base_url
+-    api_key = body.api_key or s.embedding.api_key
+-    model = body.model or s.embedding.model
+-    if not all([base_url, api_key, model]):
+-        raise HTTPException(status_code=400, detail="Embedding base_url, api_key, and model are required")
+-    try:
+-        client = OpenAI(base_url=base_url, api_key=api_key)
+-        resp = client.embeddings.create(model=model, input=body.text)
+-        dim = len(resp.data[0].embedding) if resp.data else 0
+-        return {"success": True, "dimension": dim, "usage": resp.usage.model_dump() if resp.usage else None}
+-    except Exception as exc:
+-        return {"success": False, "error": str(exc)}
+diff --git a/backend/core/config.py b/backend/core/config.py
+index 1d1a3ba..ac28984 100644
+--- a/backend/core/config.py
++++ b/backend/core/config.py
+@@ -3,9 +3,7 @@
+ from __future__ import annotations
+ 
+ import json
+-import os
+ from pathlib import Path
+-from typing import Any
+ 
+ from pydantic import BaseModel
+ from pydantic_settings import BaseSettings
+@@ -20,58 +18,39 @@ class LLMConfig(BaseModel):
+     model: str = ""
+ 
+ 
+-class EmbeddingConfig(BaseModel):
+-    base_url: str = ""
+-    api_key: str = ""
+-    model: str = ""
+-
+-
+-class RerankerConfig(BaseModel):
+-    base_url: str = ""
+-    api_key: str = ""
+-    model: str = ""
+-    enabled: bool = False
+-
+-
+ class Settings(BaseSettings):
+     """LAIDocs application settings persisted to ~/.laidocs/config.json."""
+ 
+     llm: LLMConfig = LLMConfig()
+-    embedding: EmbeddingConfig = EmbeddingConfig()
+-    reranker: RerankerConfig = RerankerConfig()
+     port: int = 8008
+ 
+     model_config = {"arbitrary_types_allowed": True}
+ 
+-    # ── persistence ──────────────────────────────────────────────────
+-
+     def save_to_file(self, path: Path | None = None) -> None:
+-        """Write current settings as JSON to *path* (default CONFIG_PATH)."""
+         target = path or CONFIG_PATH
+         target.parent.mkdir(parents=True, exist_ok=True)
+         target.write_text(self.model_dump_json(indent=2), encoding="utf-8")
+ 
+     @classmethod
+     def load_from_file(cls, path: Path | None = None) -> Settings:
+-        """Read settings from *path* (default CONFIG_PATH). Missing file → defaults."""
+         target = path or CONFIG_PATH
+         if not target.exists():
+-            # Ensure the directory exists
+             target.parent.mkdir(parents=True, exist_ok=True)
+             return cls()
+         try:
+             raw = json.loads(target.read_text(encoding="utf-8"))
+-            return cls.model_validate(raw)
++            # Filter out removed keys for backward compat
++            valid_keys = cls.model_fields.keys()
++            filtered = {k: v for k, v in raw.items() if k in valid_keys}
++            return cls.model_validate(filtered)
+         except (json.JSONDecodeError, Exception):
+             return cls()
+ 
+ 
+-# Singleton helper
+ _settings: Settings | None = None
+ 
+ 
+ def get_settings() -> Settings:
+-    """Return the global Settings singleton, loading from disk on first call."""
+     global _settings
+     if _settings is None:
+         _settings = Settings.load_from_file()
+@@ -79,7 +58,6 @@ def get_settings() -> Settings:
+ 
+ 
+ def reload_settings() -> Settings:
+-    """Force-reload settings from disk."""
+     global _settings
+     _settings = Settings.load_from_file()
+     return _settings
+diff --git a/backend/core/database.py b/backend/core/database.py
+index 20a849e..32fdfb8 100644
+--- a/backend/core/database.py
++++ b/backend/core/database.py
+@@ -1,7 +1,6 @@
+-"""SQLite + LanceDB database layer for LAIDocs.
++"""SQLite database layer for LAIDocs.
+ 
+-SQLite: document metadata, folder tree, FTS5 full-text index.
+-LanceDB: vector embeddings for semantic (dense) search.
++Stores document metadata, folder tree, and tree index JSON.
+ """
+ 
+ from __future__ import annotations
+@@ -15,7 +14,6 @@ from typing import Generator
+ from .config import LAIDOCS_HOME
+ 
+ DB_PATH = LAIDOCS_HOME / "data" / "laidocs.db"
+-LANCE_PATH = str(LAIDOCS_HOME / "data" / "vectors.lance")
+ 
+ # ---------------------------------------------------------------------------
+ # SQLite schema
+@@ -37,37 +35,18 @@ CREATE TABLE IF NOT EXISTS documents (
+     source_type TEXT NOT NULL CHECK(source_type IN ('file', 'url')),
+     original_path TEXT,
+     content TEXT,
++    tree_index TEXT,
+     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+     FOREIGN KEY (folder) REFERENCES folders(path)
+ );
+-
+-CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
+-    title,
+-    content,
+-    content=documents,
+-    content_rowid=rowid
+-);
+-
+--- Triggers to keep FTS in sync with documents table
+-CREATE TRIGGER IF NOT EXISTS documents_ai AFTER INSERT ON documents BEGIN
+-    INSERT INTO documents_fts(rowid, title, content)
+-    VALUES (new.rowid, new.title, new.content);
+-END;
+-
+-CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
+-    INSERT INTO documents_fts(documents_fts, rowid, title, content)
+-    VALUES ('delete', old.rowid, old.title, old.content);
+-END;
+-
+-CREATE TRIGGER IF NOT EXISTS documents_au AFTER UPDATE ON documents BEGIN
+-    INSERT INTO documents_fts(documents_fts, rowid, title, content)
+-    VALUES ('delete', old.rowid, old.title, old.content);
+-    INSERT INTO documents_fts(rowid, title, content)
+-    VALUES (new.rowid, new.title, new.content);
+-END;
+ """
+ 
++# Migration for existing databases
++_MIGRATIONS = [
++    "ALTER TABLE documents ADD COLUMN tree_index TEXT",
++]
++
+ 
+ def init_db() -> None:
+     """Create DB file and all tables if they do not exist yet."""
+@@ -76,6 +55,12 @@ def init_db() -> None:
+         conn.execute("PRAGMA journal_mode=WAL")
+         conn.execute("PRAGMA foreign_keys=ON")
+         conn.executescript(_SCHEMA)
++        # Run migrations (ignore errors for already-applied ones)
++        for migration in _MIGRATIONS:
++            try:
++                conn.execute(migration)
++            except sqlite3.OperationalError:
++                pass  # column already exists
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -97,106 +82,3 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
+         raise
+     finally:
+         conn.close()
+-
+-
+-def db_dependency() -> Generator[sqlite3.Connection, None, None]:
+-    """FastAPI Depends-compatible wrapper around get_db()."""
+-    gen = get_db()
+-    try:
+-        yield next(gen)
+-    finally:
+-        try:
+-            next(gen)
+-        except StopIteration:
+-            pass
+-
+-
+-# ---------------------------------------------------------------------------
+-# LanceDB vector store
+-# ---------------------------------------------------------------------------
+-
+-# Default embedding dimension — overridden at runtime when first vector is stored.
+-# text-embedding-3-small = 1536, text-embedding-ada-002 = 1536, nomic-embed = 768, etc.
+-DEFAULT_EMBEDDING_DIM = 1536
+-
+-_lance_table_cache: object | None = None
+-_lance_lock = threading.Lock()
+-
+-
+-def _is_fixed_size_vector_schema(table) -> bool:
+-    """Return True if the table's vector column is a FixedSizeList (required for ANN search)."""
+-    import pyarrow as pa
+-    field = table.schema.field("vector")
+-    return pa.types.is_fixed_size_list(field.type)
+-
+-
+-def get_lance_table(embedding_dim: int = DEFAULT_EMBEDDING_DIM):
+-    """Return (and lazily create) the LanceDB 'chunks' table.
+-
+-    Columns:
+-        id          -- chunk id  "<doc_id>__<chunk_index>"
+-        doc_id      -- parent document id
+-        chunk_index -- position within the document  (int32)
+-        content     -- raw text of this chunk
+-        vector      -- embedding vector as FixedSizeList[float32, embedding_dim]
+-
+-    Thread-safe: a lock prevents race conditions when multiple background
+-    tasks call this concurrently.  Importing lancedb/pyarrow is deferred
+-    so that the rest of the app works even when these packages are absent.
+-
+-    IMPORTANT: The vector column MUST use pa.list_(pa.float32(), embedding_dim)
+-    (FixedSizeList) — NOT pa.list_(pa.float32()) (variable-length list).
+-    LanceDB requires FixedSizeList for ANN vector search.
+-    """
+-    global _lance_table_cache
+-
+-    if _lance_table_cache is not None:
+-        return _lance_table_cache
+-
+-    with _lance_lock:
+-        # Double-check after acquiring lock
+-        if _lance_table_cache is not None:
+-            return _lance_table_cache
+-
+-        import lancedb
+-        import pyarrow as pa
+-
+-        db = lancedb.connect(LANCE_PATH)
+-
+-        # Schema with FixedSizeList — required for ANN vector search in LanceDB.
+-        schema = pa.schema(
+-            [
+-                pa.field("id", pa.string()),
+-                pa.field("doc_id", pa.string()),
+-                pa.field("chunk_index", pa.int32()),
+-                pa.field("content", pa.string()),
+-                pa.field("vector", pa.list_(pa.float32(), embedding_dim)),
+-            ]
+-        )
+-
+-        table_names = db.table_names()
+-        needs_recreate = False
+-
+-        if "chunks" not in table_names:
+-            _lance_table_cache = db.create_table("chunks", schema=schema)
+-        else:
+-            existing = db.open_table("chunks")
+-            # Migrate if vector column is variable-length list (old broken schema)
+-            if not _is_fixed_size_vector_schema(existing):
+-                needs_recreate = True
+-
+-            if needs_recreate:
+-                # Drop and recreate with correct FixedSizeList schema.
+-                # All stored vectors are unusable anyway (wrong schema).
+-                db.drop_table("chunks")
+-                _lance_table_cache = db.create_table("chunks", schema=schema)
+-            else:
+-                _lance_table_cache = existing
+-
+-        return _lance_table_cache
+-
+-
+-def invalidate_lance_cache() -> None:
+-    """Reset the cached LanceDB table handle (useful after schema changes)."""
+-    global _lance_table_cache
+-    _lance_table_cache = None
+diff --git a/backend/main.py b/backend/main.py
+index 6ffa303..70ea047 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -53,39 +53,6 @@ async def lifespan(app: FastAPI):
+     assets_path = ensure_assets_dir()
+     app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
+ 
+-    # Initialise LanceDB — this also auto-migrates the vector column schema
+-    # from the old variable-length list to FixedSizeList if needed.
+-    try:
+-        from backend.core.database import get_lance_table, _is_fixed_size_vector_schema
+-        import lancedb, pyarrow as pa
+-
+-        db = lancedb.connect(str(LAIDOCS_HOME / "data" / "vectors.lance"))
+-        table_existed = "chunks" in db.table_names()
+-        old_schema_bad = False
+-        if table_existed:
+-            t = db.open_table("chunks")
+-            old_schema_bad = not _is_fixed_size_vector_schema(t)
+-
+-        get_lance_table()  # triggers migration + creation
+-
+-        if old_schema_bad:
+-            # Old table had wrong schema; re-index all documents in background.
+-            print("[sidecar] LanceDB schema migrated → scheduling full re-index")
+-            from backend.services.indexer import get_indexer
+-
+-            def _startup_reindex():
+-                try:
+-                    results = get_indexer().reindex_all()
+-                    total = sum(results.values())
+-                    print(f"[sidecar] Re-index complete: {len(results)} docs, {total} chunks")
+-                except Exception as exc:
+-                    print(f"[sidecar] Re-index failed: {exc}")
+-
+-            import threading
+-            threading.Thread(target=_startup_reindex, daemon=True).start()
+-    except Exception as exc:
+-        print(f"[sidecar] LanceDB init warning: {exc}")
+-
+     print("[sidecar] Server ready")
+     yield
+     # Shutdown (nothing to clean up yet)
+diff --git a/backend/requirements.txt b/backend/requirements.txt
+index 34eff7e..9a96dba 100644
+--- a/backend/requirements.txt
++++ b/backend/requirements.txt
+@@ -10,5 +10,4 @@ docling-core>=2.0
+ crawl4ai>=0.8.0
+ httpx>=0.27.0
+ html2text>=2024.2.26
+-lancedb>=0.17.0
+-pyarrow>=15.0
++
+diff --git a/backend/services/indexer.py b/backend/services/indexer.py
+deleted file mode 100644
+index 2c00ea0..0000000
+--- a/backend/services/indexer.py
++++ /dev/null
+@@ -1,251 +0,0 @@
+-"""Document indexer: chunking, embedding, and dual-index storage.
+-
+-Writes to:
+-  - LanceDB   -- dense vector embeddings per chunk
+-  - SQLite FTS5 -- BM25 full-text index (via documents table triggers)
+-
+-The embedding client is OpenAI-SDK-compatible so any provider with an
+-OpenAI-compatible endpoint works (OpenAI, Ollama, LocalAI, vLLM, etc.).
+-"""
+-
+-from __future__ import annotations
+-
+-import re
+-from typing import Sequence
+-
+-from ..core.config import EmbeddingConfig, Settings, get_settings
+-from ..core.database import get_db, get_lance_table
+-
+-# ---------------------------------------------------------------------------
+-# Default chunking parameters
+-# ---------------------------------------------------------------------------
+-
+-CHUNK_TARGET_CHARS = 2000   # ~500 tokens at 4 chars/token
+-CHUNK_OVERLAP_CHARS = 300   # ~75 tokens overlap between consecutive chunks
+-EMBED_BATCH_SIZE = 32       # max texts per embedding API call
+-
+-
+-# ---------------------------------------------------------------------------
+-# Chunker
+-# ---------------------------------------------------------------------------
+-
+-
+-def _chunk_markdown(markdown: str) -> list[str]:
+-    """Split *markdown* into overlapping chunks suitable for embedding.
+-
+-    Strategy:
+-      1. Split on heading boundaries (##, ###, ####) to keep semantic units.
+-      2. If a unit is still larger than CHUNK_TARGET_CHARS split further on
+-         blank-line paragraph boundaries.
+-      3. If a paragraph is still too long, split on sentence boundaries.
+-      4. Accumulate chunks with CHUNK_OVERLAP_CHARS trailing overlap so that
+-         context is not lost at chunk edges.
+-    """
+-    if not markdown:
+-        return []
+-
+-    # ── Step 1: split on headings ──────────────────────────────────
+-    heading_re = re.compile(r"^(#{1,4}\s+.+)$", re.MULTILINE)
+-    sections: list[str] = []
+-    last_end = 0
+-    for m in heading_re.finditer(markdown):
+-        if m.start() > last_end:
+-            sections.append(markdown[last_end : m.start()].strip())
+-        last_end = m.start()
+-    sections.append(markdown[last_end:].strip())
+-    sections = [s for s in sections if s]
+-
+-    # ── Step 2/3: further split large sections ─────────────────────
+-    raw_chunks: list[str] = []
+-    for section in sections:
+-        if len(section) <= CHUNK_TARGET_CHARS:
+-            raw_chunks.append(section)
+-            continue
+-        # Split on double newline (paragraphs)
+-        paras = [p.strip() for p in section.split("\n\n") if p.strip()]
+-        for para in paras:
+-            if len(para) <= CHUNK_TARGET_CHARS:
+-                raw_chunks.append(para)
+-            else:
+-                # Split on sentence endings
+-                sentences = re.split(r"(?<=[.!?])\s+", para)
+-                buf = ""
+-                for sent in sentences:
+-                    if len(buf) + len(sent) + 1 > CHUNK_TARGET_CHARS and buf:
+-                        raw_chunks.append(buf.strip())
+-                        buf = sent
+-                    else:
+-                        buf = buf + " " + sent if buf else sent
+-                if buf:
+-                    raw_chunks.append(buf.strip())
+-
+-    if not raw_chunks:
+-        # fallback: return whole document as single chunk
+-        return [markdown[: CHUNK_TARGET_CHARS * 4]]
+-
+-    # ── Step 4: add overlap ────────────────────────────────────────
+-    overlapped: list[str] = []
+-    for i, chunk in enumerate(raw_chunks):
+-        if i == 0:
+-            overlapped.append(chunk)
+-        else:
+-            tail = raw_chunks[i - 1][-CHUNK_OVERLAP_CHARS:]
+-            overlapped.append(tail + "\n\n" + chunk)
+-
+-    return overlapped
+-
+-
+-# ---------------------------------------------------------------------------
+-# Embedder
+-# ---------------------------------------------------------------------------
+-
+-
+-def _make_embedding_client(cfg: EmbeddingConfig):
+-    """Return an openai.OpenAI client configured for the embedding endpoint."""
+-    from openai import OpenAI
+-
+-    return OpenAI(
+-        base_url=cfg.base_url or None,
+-        api_key=cfg.api_key or "sk-placeholder",
+-    )
+-
+-
+-def _embed_batch(texts: list[str], client, model: str) -> list[list[float]]:
+-    """Embed *texts* in a single API call. Returns one vector per text."""
+-    if not texts:
+-        return []
+-    resp = client.embeddings.create(model=model, input=texts)
+-    # Sort by index to guarantee order matches input
+-    items = sorted(resp.data, key=lambda x: x.index)
+-    return [item.embedding for item in items]
+-
+-
+-# ---------------------------------------------------------------------------
+-# Public indexer
+-# ---------------------------------------------------------------------------
+-
+-
+-class Indexer:
+-    """Chunks and indexes documents into LanceDB + SQLite FTS5.
+-
+-    Usage::
+-
+-        indexer = Indexer()
+-        indexer.index_document(doc_id, markdown)
+-        indexer.remove_document(doc_id)
+-    """
+-
+-    def __init__(self, settings: Settings | None = None) -> None:
+-        self._settings = settings or get_settings()
+-
+-    # ----------------------------------------------------------------
+-    def _embedding_enabled(self) -> bool:
+-        cfg = self._settings.embedding
+-        return bool(cfg.model and cfg.base_url)
+-
+-    def _client_and_model(self):
+-        cfg = self._settings.embedding
+-        return _make_embedding_client(cfg), cfg.model
+-
+-    # ----------------------------------------------------------------
+-    def chunk(self, markdown: str) -> list[str]:
+-        """Public helper: split *markdown* into chunks."""
+-        return _chunk_markdown(markdown)
+-
+-    # ----------------------------------------------------------------
+-    def index_document(self, doc_id: str, markdown: str) -> int:
+-        """Chunk + embed *markdown* and store results in LanceDB.
+-
+-        Returns the number of chunks indexed.
+-        If embedding is not configured the vector store is skipped
+-        (FTS is always updated via SQLite triggers).
+-        """
+-        chunks = _chunk_markdown(markdown)
+-        if not chunks:
+-            return 0
+-
+-        if not self._embedding_enabled():
+-            # FTS-only path: SQLite triggers handle FTS on INSERT/UPDATE
+-            return len(chunks)
+-
+-        client, model = self._client_and_model()
+-        table = get_lance_table()
+-
+-        # Remove any stale vectors for this doc first
+-        self._delete_from_lance(doc_id, table)
+-
+-        # Embed in batches
+-        vectors: list[list[float]] = []
+-        for i in range(0, len(chunks), EMBED_BATCH_SIZE):
+-            batch = chunks[i : i + EMBED_BATCH_SIZE]
+-            vectors.extend(_embed_batch(batch, client, model))
+-
+-        # Build records for LanceDB
+-        rows = [
+-            {
+-                "id": f"{doc_id}__{i}",
+-                "doc_id": doc_id,
+-                "chunk_index": i,
+-                "content": chunk,
+-                "vector": vec,
+-            }
+-            for i, (chunk, vec) in enumerate(zip(chunks, vectors))
+-        ]
+-
+-        table.add(rows)
+-        return len(rows)
+-
+-    # ----------------------------------------------------------------
+-    def remove_document(self, doc_id: str) -> None:
+-        """Remove all vector chunks for *doc_id* from LanceDB."""
+-        if not self._embedding_enabled():
+-            return
+-        table = get_lance_table()
+-        self._delete_from_lance(doc_id, table)
+-
+-    # ----------------------------------------------------------------
+-    def reindex_all(self) -> dict[str, int]:
+-        """Re-index every document currently in the vault.
+-
+-        Returns a dict mapping doc_id -> chunk_count.
+-        """
+-        from ..core.vault import vault
+-
+-        results: dict[str, int] = {}
+-        docs = vault.list_documents()
+-        for meta in docs:
+-            # vault.list_documents() returns dicts keyed by "doc_id" (not "id")
+-            doc_id = meta.get("doc_id") or meta.get("id")
+-            if not doc_id:
+-                continue
+-            result = vault.get_document(doc_id)
+-            if result is None:
+-                continue
+-            content, _ = result
+-            count = self.index_document(doc_id, content)
+-            results[doc_id] = count
+-        return results
+-
+-    # ----------------------------------------------------------------
+-    @staticmethod
+-    def _delete_from_lance(doc_id: str, table) -> None:
+-        """Remove all rows for *doc_id* from a LanceDB table."""
+-        try:
+-            table.delete(f"doc_id = '{doc_id}'")
+-        except Exception:
+-            pass  # table may be empty on first run
+-
+-
+-# ---------------------------------------------------------------------------
+-# Module-level singleton
+-# ---------------------------------------------------------------------------
+-
+-_indexer: Indexer | None = None
+-
+-
+-def get_indexer() -> Indexer:
+-    """Return the application-wide Indexer singleton."""
+-    global _indexer
+-    if _indexer is None:
+-        _indexer = Indexer()
+-    return _indexer
+diff --git a/backend/services/rag.py b/backend/services/rag.py
+index 8902c72..d700995 100644
+--- a/backend/services/rag.py
++++ b/backend/services/rag.py
+@@ -1,157 +1,171 @@
+-"""RAG (Retrieval-Augmented Generation) pipeline for document Q&A.
++"""RAG pipeline using PageIndex tree reasoning.
+ 
+-Retrieves the most relevant chunks from a document and streams/returns
+-an LLM answer that is grounded in the document content.
++Two-step retrieval:
++  1. LLM reads tree structure (titles + summaries) → selects relevant node_ids
++  2. Backend fetches text from selected nodes → LLM generates answer
+ """
+ 
+ from __future__ import annotations
+ 
+ import asyncio
++import json
+ import re
+ from typing import AsyncGenerator
+ 
+ from ..core.config import Settings, get_settings
+-from ..core.database import get_db, get_lance_table
+-from ..services.indexer import _embed_batch, _make_embedding_client
++from ..core.database import get_db
++from ..services.tree_index import find_nodes_by_ids, remove_fields
+ 
+ # ---------------------------------------------------------------------------
+-# System prompt
++# Prompts
+ # ---------------------------------------------------------------------------
+ 
++_NODE_SELECT_PROMPT = """\
++Given this document's tree structure, identify which sections are most \
++relevant to answer the user's question. Return ONLY a JSON array of \
++node_ids, ordered by relevance. Select 1-5 nodes maximum.
++
++Document Structure:
++{structure}
++
++Question: {question}
++
++Return format: ["0003", "0007"]"""
++
+ _SYSTEM_PROMPT = """\
+-You are a helpful document assistant.  Your task is to answer questions
+-about a specific document provided by the user.
++You are a helpful document assistant. Your task is to answer questions \
++about a specific document.
+ 
+ Rules:
+ 1. Base your answer ONLY on the document context provided below.
+-2. If the context does not contain enough information to answer, say so clearly
+-   (e.g., "The document does not appear to cover this topic.").
+-3. Cite specific sections or headings from the context when relevant.
++2. If the context does not contain enough information, say so clearly.
++3. Cite specific section titles when relevant.
+ 4. Keep your answer concise and well-structured.
+-5. Do NOT make up information that is not in the context.
+-"""
++5. Do NOT make up information not in the context."""
+ 
+-# ---------------------------------------------------------------------------
+-# Context retrieval helpers
+-# ---------------------------------------------------------------------------
++MAX_CONTEXT_CHARS = 12_000
+ 
+-MAX_CONTEXT_CHARS = 12_000  # ~3 000 tokens at 4 chars/token
+ 
++# ---------------------------------------------------------------------------
++# Context retrieval
++# ---------------------------------------------------------------------------
+ 
+-def _sanitize_fts_query(query: str) -> str:
+-    """Strip characters that break FTS5 MATCH syntax (e.g. ?, !, *, quotes)."""
+-    # Remove punctuation that FTS5 treats as operators/syntax
+-    cleaned = re.sub(r'[?"\'*(){}\[\]\\:^~]', " ", query)
+-    # Collapse whitespace and strip
+-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+-    # FTS5 needs at least one token; use AND between remaining words
+-    return cleaned.replace(" ", " ") if cleaned else ""
+ 
++def _get_tree_index(doc_id: str) -> dict | None:
++    """Load the tree index JSON for a document from SQLite."""
++    with get_db() as conn:
++        row = conn.execute(
++            "SELECT tree_index FROM documents WHERE id=?", (doc_id,)
++        ).fetchone()
++    if row and row[0]:
++        try:
++            return json.loads(row[0])
++        except (json.JSONDecodeError, TypeError):
++            return None
++    return None
+ 
+-def _retrieve_fts_chunks(doc_id: str, query: str, top_k: int = 8) -> list[str]:
+-    """Return the top-K chunks from *doc_id* using FTS5 within the document."""
+-    fts_query = _sanitize_fts_query(query)
+-    if not fts_query:
+-        # Fallback: return beginning of document
+-        with get_db() as conn:
+-            row = conn.execute(
+-                "SELECT SUBSTR(content, 1, ?) FROM documents WHERE id=?",
+-                (MAX_CONTEXT_CHARS, doc_id),
+-            ).fetchone()
+-            return [row[0]] if row and row[0] else []
+ 
++def _get_document_content(doc_id: str) -> str | None:
++    """Load raw markdown content for fallback."""
+     with get_db() as conn:
+-        try:
+-            rows = conn.execute(
+-                """
+-                SELECT snippet(documents_fts, 1, '', '', '...', 50) AS chunk
+-                FROM documents_fts
+-                JOIN documents d ON d.rowid = documents_fts.rowid
+-                WHERE documents_fts MATCH ?
+-                  AND d.id = ?
+-                ORDER BY rank
+-                LIMIT ?
+-                """,
+-                (fts_query, doc_id, top_k),
+-            ).fetchall()
+-        except Exception:
+-            rows = []
+-
+-        if rows:
+-            return [r[0] for r in rows if r[0]]
+-
+-        # Fallback: return beginning of document
+         row = conn.execute(
+-            "SELECT SUBSTR(content, 1, ?) FROM documents WHERE id=?",
+-            (MAX_CONTEXT_CHARS, doc_id),
++            "SELECT content FROM documents WHERE id=?", (doc_id,)
+         ).fetchone()
+-        return [row[0]] if row and row[0] else []
+-
+-
+-def _retrieve_vector_chunks(doc_id: str, query_vector: list[float], top_k: int = 8) -> list[str]:
+-    """Return the top-K chunks from *doc_id* by vector similarity."""
+-    table = get_lance_table()
+-    try:
+-        df = (
+-            table.search(query_vector, vector_column_name="vector")
+-            .where(f"doc_id = '{doc_id}'")
+-            .metric("cosine")
+-            .limit(top_k)
+-            .to_pandas()
+-        )
+-        return df["content"].tolist()
+-    except Exception:
+-        return []
++    return row[0] if row and row[0] else None
+ 
+ 
+-def _build_context(chunks: list[str]) -> str:
+-    """Concatenate chunks up to MAX_CONTEXT_CHARS."""
++def _build_context_from_nodes(nodes: list[dict]) -> str:
++    """Build context string from selected tree nodes."""
+     ctx = ""
+-    for chunk in chunks:
+-        if len(ctx) + len(chunk) + 2 > MAX_CONTEXT_CHARS:
++    for node in nodes:
++        title = node.get('title', 'Untitled')
++        node_id = node.get('node_id', '?')
++        text = node.get('text', '')
++        section = f"[Section: {title} (node {node_id})]\n{text}\n\n"
++        if len(ctx) + len(section) > MAX_CONTEXT_CHARS:
+             break
+-        ctx += chunk + "\n\n"
++        ctx += section
+     return ctx.strip()
+ 
+ 
+-def _get_context(doc_id: str, question: str, settings: Settings) -> str:
+-    """Retrieve relevant context for *doc_id* / *question*."""
+-    cfg = settings.embedding
+-    if cfg.model and cfg.base_url:
+-        client = _make_embedding_client(cfg)
+-        vecs = _embed_batch([question], client, cfg.model)
+-        if vecs:
+-            chunks = _retrieve_vector_chunks(doc_id, vecs[0], top_k=8)
+-            if chunks:
+-                return _build_context(chunks)
+-    # FTS fallback
+-    chunks = _retrieve_fts_chunks(doc_id, question, top_k=8)
+-    return _build_context(chunks)
++def _select_nodes_sync(tree_index: dict, question: str, settings: Settings) -> list[str]:
++    """Step 1: Ask LLM to select relevant node_ids from tree structure."""
++    from openai import OpenAI
++
++    structure = tree_index.get('structure', [])
++    # Send tree WITHOUT text (only titles + summaries + node_ids)
++    structure_no_text = remove_fields(structure, fields=['text'])
++
++    client = OpenAI(
++        base_url=settings.llm.base_url or None,
++        api_key=settings.llm.api_key or "sk-placeholder",
++    )
++
++    prompt = _NODE_SELECT_PROMPT.format(
++        structure=json.dumps(structure_no_text, ensure_ascii=False, indent=2),
++        question=question,
++    )
++
++    resp = client.chat.completions.create(
++        model=settings.llm.model,
++        messages=[{"role": "user", "content": prompt}],
++        temperature=0,
++        max_tokens=200,
++    )
++
++    raw = resp.choices[0].message.content or "[]"
++    # Extract JSON array from response
++    match = re.search(r'\[.*?\]', raw, re.DOTALL)
++    if match:
++        try:
++            return json.loads(match.group())
++        except json.JSONDecodeError:
++            pass
++    return []
+ 
+ 
+ # ---------------------------------------------------------------------------
+-# RAG pipeline
++# RAG Pipeline
+ # ---------------------------------------------------------------------------
+ 
+ 
+ class RAGPipeline:
+-    """Document Q&A via retrieval-augmented generation."""
++    """Document Q&A via tree-reasoning retrieval."""
+ 
+     def __init__(self, settings: Settings | None = None) -> None:
+         self._settings = settings or get_settings()
+ 
+     def _llm_client(self):
+         from openai import OpenAI
+-
+         cfg = self._settings.llm
+         return OpenAI(
+             base_url=cfg.base_url or None,
+             api_key=cfg.api_key or "sk-placeholder",
+         )
+ 
++    def _get_context(self, doc_id: str, question: str) -> str:
++        """Two-step retrieval: select nodes then fetch their text."""
++        tree_index = _get_tree_index(doc_id)
++
++        if tree_index and tree_index.get('structure'):
++            # Step 1: LLM selects relevant nodes
++            node_ids = _select_nodes_sync(tree_index, question, self._settings)
++
++            if node_ids:
++                # Step 2: Fetch text from selected nodes
++                nodes = find_nodes_by_ids(tree_index['structure'], node_ids)
++                if nodes:
++                    return _build_context_from_nodes(nodes)
++
++        # Fallback: no tree or no nodes selected → use raw content
++        content = _get_document_content(doc_id)
++        if content:
++            return content[:MAX_CONTEXT_CHARS]
++        return ""
++
+     def query(self, doc_id: str, question: str) -> str:
+         """Return a complete answer string (non-streaming)."""
+-        context = _get_context(doc_id, question, self._settings)
++        context = self._get_context(doc_id, question)
+         messages = [
+             {"role": "system", "content": _SYSTEM_PROMPT},
+             {"role": "user", "content": f"Document context:\n\n{context}\n\nQuestion: {question}"},
+@@ -163,20 +177,16 @@ class RAGPipeline:
+         )
+         return resp.choices[0].message.content or ""
+ 
+-    async def query_stream(
+-        self, doc_id: str, question: str
+-    ) -> AsyncGenerator[str, None]:
++    async def query_stream(self, doc_id: str, question: str) -> AsyncGenerator[str, None]:
+         """Yield answer tokens as an async generator (for SSE streaming)."""
+-        context = _get_context(doc_id, question, self._settings)
++        loop = asyncio.get_event_loop()
++        context = await loop.run_in_executor(None, self._get_context, doc_id, question)
++
+         messages = [
+             {"role": "system", "content": _SYSTEM_PROMPT},
+             {"role": "user", "content": f"Document context:\n\n{context}\n\nQuestion: {question}"},
+         ]
+         client = self._llm_client()
+-
+-        # Run the blocking streaming call in a thread so we don't block the
+-        # asyncio event loop.
+-        loop = asyncio.get_event_loop()
+         stream = await loop.run_in_executor(
+             None,
+             lambda: client.chat.completions.create(
+@@ -192,14 +202,13 @@ class RAGPipeline:
+ 
+ 
+ # ---------------------------------------------------------------------------
+-# Module-level singleton
++# Singleton
+ # ---------------------------------------------------------------------------
+ 
+ _pipeline: RAGPipeline | None = None
+ 
+ 
+ def get_rag_pipeline() -> RAGPipeline:
+-    """Return the application-wide RAGPipeline singleton."""
+     global _pipeline
+     if _pipeline is None:
+         _pipeline = RAGPipeline()
+diff --git a/backend/services/tree_index.py b/backend/services/tree_index.py
+new file mode 100644
+index 0000000..f25da32
+--- /dev/null
++++ b/backend/services/tree_index.py
+@@ -0,0 +1,244 @@
++"""Hierarchical tree index builder for markdown documents.
++
++Adapted from PageIndex (https://github.com/VectifyAI/PageIndex).
++Builds a table-of-contents-like tree from markdown headings, with
++LLM-generated summaries per node for reasoning-based retrieval.
++"""
++
++from __future__ import annotations
++
++import asyncio
++import json
++import re
++from typing import Any
++
++from ..core.config import Settings, get_settings
++
++
++# ---------------------------------------------------------------------------
++# Markdown parsing (from PageIndex page_index_md.py)
++# ---------------------------------------------------------------------------
++
++
++def extract_nodes_from_markdown(markdown_content: str) -> tuple[list[dict], list[str]]:
++    """Parse heading nodes from markdown, respecting code blocks."""
++    header_pattern = r'^(#{1,6})\s+(.+)$'
++    code_block_pattern = r'^```'
++    node_list = []
++    lines = markdown_content.split('\n')
++    in_code_block = False
++
++    for line_num, line in enumerate(lines, 1):
++        stripped = line.strip()
++        if re.match(code_block_pattern, stripped):
++            in_code_block = not in_code_block
++            continue
++        if not stripped:
++            continue
++        if not in_code_block:
++            match = re.match(header_pattern, stripped)
++            if match:
++                node_list.append({'node_title': match.group(2).strip(), 'line_num': line_num})
++
++    return node_list, lines
++
++
++def extract_node_text_content(node_list: list[dict], markdown_lines: list[str]) -> list[dict]:
++    """Attach text content and heading level to each node."""
++    all_nodes = []
++    for node in node_list:
++        line_content = markdown_lines[node['line_num'] - 1]
++        header_match = re.match(r'^(#{1,6})', line_content)
++        if header_match is None:
++            continue
++        all_nodes.append({
++            'title': node['node_title'],
++            'line_num': node['line_num'],
++            'level': len(header_match.group(1)),
++        })
++
++    for i, node in enumerate(all_nodes):
++        start_line = node['line_num'] - 1
++        end_line = all_nodes[i + 1]['line_num'] - 1 if i + 1 < len(all_nodes) else len(markdown_lines)
++        node['text'] = '\n'.join(markdown_lines[start_line:end_line]).strip()
++
++    return all_nodes
++
++
++def build_tree_from_nodes(node_list: list[dict]) -> list[dict]:
++    """Convert flat node list into nested tree using heading levels."""
++    if not node_list:
++        return []
++    stack: list[tuple[dict, int]] = []
++    root_nodes: list[dict] = []
++    node_counter = 1
++
++    for node in node_list:
++        current_level = node['level']
++        tree_node = {
++            'title': node['title'],
++            'node_id': str(node_counter).zfill(4),
++            'text': node['text'],
++            'line_num': node['line_num'],
++            'nodes': [],
++        }
++        node_counter += 1
++        while stack and stack[-1][1] >= current_level:
++            stack.pop()
++        if not stack:
++            root_nodes.append(tree_node)
++        else:
++            stack[-1][0]['nodes'].append(tree_node)
++        stack.append((tree_node, current_level))
++
++    return root_nodes
++
++
++# ---------------------------------------------------------------------------
++# Tree utilities (from PageIndex utils.py)
++# ---------------------------------------------------------------------------
++
++
++def structure_to_list(structure: Any) -> list[dict]:
++    """Flatten tree into a list of all nodes."""
++    if isinstance(structure, dict):
++        nodes = [structure]
++        if 'nodes' in structure:
++            nodes.extend(structure_to_list(structure['nodes']))
++        return nodes
++    elif isinstance(structure, list):
++        nodes = []
++        for item in structure:
++            nodes.extend(structure_to_list(item))
++        return nodes
++    return []
++
++
++def remove_fields(data: Any, fields: list[str] | None = None) -> Any:
++    """Recursively remove specified fields from tree structure."""
++    if fields is None:
++        fields = ['text']
++    if isinstance(data, dict):
++        return {k: remove_fields(v, fields) for k, v in data.items() if k not in fields}
++    elif isinstance(data, list):
++        return [remove_fields(item, fields) for item in data]
++    return data
++
++
++def find_nodes_by_ids(structure: list[dict], node_ids: list[str]) -> list[dict]:
++    """Find and return nodes matching the given node_ids."""
++    id_set = set(node_ids)
++    results = []
++
++    def _traverse(nodes: list[dict]) -> None:
++        for node in nodes:
++            if node.get('node_id') in id_set:
++                results.append(node)
++            if node.get('nodes'):
++                _traverse(node['nodes'])
++
++    _traverse(structure)
++    # Return in the order requested
++    id_order = {nid: i for i, nid in enumerate(node_ids)}
++    results.sort(key=lambda n: id_order.get(n.get('node_id', ''), 999))
++    return results
++
++
++# ---------------------------------------------------------------------------
++# LLM summary generation
++# ---------------------------------------------------------------------------
++
++_SUMMARY_PROMPT = """\
++You are given a part of a document. Generate a concise 1-2 sentence \
++description of what this section covers.
++
++Section text:
++{text}
++
++Return only the description, nothing else."""
++
++
++async def _generate_summary(text: str, settings: Settings) -> str:
++    """Generate a summary for a single node using the configured LLM."""
++    from openai import OpenAI
++
++    cfg = settings.llm
++    if not cfg.model or not cfg.base_url:
++        # LLM not configured — use truncated text as summary
++        return text[:200] + ("..." if len(text) > 200 else "")
++
++    client = OpenAI(base_url=cfg.base_url or None, api_key=cfg.api_key or "sk-placeholder")
++
++    loop = asyncio.get_event_loop()
++    try:
++        resp = await loop.run_in_executor(None, lambda: client.chat.completions.create(
++            model=cfg.model,
++            messages=[{"role": "user", "content": _SUMMARY_PROMPT.format(text=text[:3000])}],
++            max_tokens=150,
++            temperature=0,
++        ))
++        return resp.choices[0].message.content or text[:200]
++    except Exception:
++        return text[:200] + ("..." if len(text) > 200 else "")
++
++
++async def generate_summaries(structure: list[dict], settings: Settings) -> list[dict]:
++    """Generate summaries for all nodes in the tree concurrently."""
++    all_nodes = structure_to_list(structure)
++    tasks = []
++    for node in all_nodes:
++        node_text = node.get('text', '')
++        # Short text doesn't need LLM summarisation — use text directly
++        if len(node_text) < 500:
++
++            async def _passthrough(t: str = node_text) -> str:
++                return t
++
++            tasks.append(_passthrough())
++        else:
++            tasks.append(_generate_summary(node_text, settings))
++
++    summaries = await asyncio.gather(*tasks, return_exceptions=True)
++
++    for node, summary in zip(all_nodes, summaries):
++        if isinstance(summary, Exception):
++            summary = node.get('text', '')[:200]
++        if not node.get('nodes'):
++            node['summary'] = summary
++        else:
++            node['prefix_summary'] = summary
++
++    return structure
++
++
++# ---------------------------------------------------------------------------
++# Public API
++# ---------------------------------------------------------------------------
++
++
++async def build_tree_index(markdown: str, settings: Settings | None = None) -> dict | None:
++    """Build a hierarchical tree index from markdown content.
++
++    Returns a dict with 'structure' and 'line_count', or None if
++    the document has no headings (fallback handled by caller).
++    """
++    if not markdown or not markdown.strip():
++        return None
++
++    settings = settings or get_settings()
++    node_list, lines = extract_nodes_from_markdown(markdown)
++
++    if not node_list:
++        # No headings — return None, caller will use full-text fallback
++        return None
++
++    nodes_with_content = extract_node_text_content(node_list, lines)
++    tree_structure = build_tree_from_nodes(nodes_with_content)
++
++    # Generate summaries
++    await generate_summaries(tree_structure, settings)
++
++    return {
++        'line_count': len(lines),
++        'structure': tree_structure,
++    }
+diff --git a/docs/plans/task.md b/docs/plans/task.md
+index d42b6bd..eab7cb2 100644
+--- a/docs/plans/task.md
++++ b/docs/plans/task.md
+@@ -1,12 +1,13 @@
+-# IDE File Tree — Task Tracker
++# PageIndex RAG Upgrade — Task Tracker
+ 
+ | # | Task | Status |
+ |---|------|--------|
+-| 1 | Backend: tree endpoint + create-document API | done |
+-| 2 | FileTree component | done |
+-| 3 | Resizable sidebar (drag + collapse) | done |
+-| 4 | Integrate FileTree into Sidebar | done |
+-| 5 | WelcomePanel + route updates | done |
+-| 6 | Download button in editor | done |
+-| 7 | Cleanup and polish | done |
+-| 8 | Code Review and Fixes | [x] |
++| 1 | Create Tree Index Service | done |
++| 2 | Rewrite RAG Pipeline | done |
++| 3 | Update Database Schema | done |
++| 4 | Simplify Config | done |
++| 5 | Update Documents API | done |
++| 6 | Simplify Settings API | done |
++| 7 | Delete Unused Backend Files | done |
++| 8 | Clean Frontend — Remove Search + Simplify Settings | done |
++| 9 | End-to-End Verification | in_progress |
+diff --git a/src/App.tsx b/src/App.tsx
+index de02bf6..cc25bc8 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -4,7 +4,6 @@ import { UploadProvider } from "./context/UploadContext";
+ import Layout from "./components/Layout";
+ import WelcomePanel from "./pages/WelcomePanel";
+ import DocumentEditor from "./pages/DocumentEditor";
+-import Search from "./pages/Search";
+ import Settings from "./pages/Settings";
+ 
+ export default function App() {
+@@ -16,7 +15,6 @@ export default function App() {
+             <Route path="/" element={<Layout />}>
+               <Route index element={<WelcomePanel />} />
+               <Route path="doc/:id" element={<DocumentEditor />} />
+-              <Route path="search" element={<Search />} />
+               <Route path="settings" element={<Settings />} />
+             </Route>
+           </Routes>
+diff --git a/src/components/Sidebar.tsx b/src/components/Sidebar.tsx
+index 60c74c3..5447c8e 100644
+--- a/src/components/Sidebar.tsx
++++ b/src/components/Sidebar.tsx
+@@ -398,13 +398,6 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
+           </div>
+         )}
+ 
+-        {/* Search */}
+-        <div style={{ marginTop: 2 }}>
+-          <NavItem active={isSearchPage} onClick={() => navigate("/search")}>
+-            <IconSearch />
+-            Search
+-          </NavItem>
+-        </div>
+ 
+         {/* Explorer section */}
+         <div style={{ marginTop: 20 }}>
+diff --git a/src/pages/Search.tsx b/src/pages/Search.tsx
+deleted file mode 100644
+index e592b20..0000000
+--- a/src/pages/Search.tsx
++++ /dev/null
+@@ -1,294 +0,0 @@
+-import { useState, useRef, useEffect } from "react";
+-import { useNavigate } from "react-router-dom";
+-import { useSidecar } from "../hooks/useSidecar";
+-import { apiPost } from "../lib/sidecar";
+-
+-interface SearchResult {
+-  doc_id: string;
+-  title: string;
+-  folder: string;
+-  snippet: string;
+-  score: number;
+-  highlights: string[];
+-}
+-
+-function useDebounce<T>(value: T, delay: number): T {
+-  const [debounced, setDebounced] = useState(value);
+-  useEffect(() => {
+-    const t = setTimeout(() => setDebounced(value), delay);
+-    return () => clearTimeout(t);
+-  }, [value, delay]);
+-  return debounced;
+-}
+-
+-const IconSearch = () => (
+-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+-    <circle cx="11" cy="11" r="8"/>
+-    <path d="m21 21-4.3-4.3"/>
+-  </svg>
+-);
+-
+-const IconFolder = () => (
+-  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+-    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+-  </svg>
+-);
+-
+-const IconArrow = () => (
+-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+-    <line x1="5" y1="12" x2="19" y2="12"/>
+-    <polyline points="12 5 19 12 12 19"/>
+-  </svg>
+-);
+-
+-function HighlightedSnippet({ snippet }: { snippet: string }) {
+-  return (
+-    <p
+-      style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.65, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", margin: 0 }}
+-      dangerouslySetInnerHTML={{ __html: snippet }}
+-    />
+-  );
+-}
+-
+-function Spinner() {
+-  return (
+-    <div style={{ width: 15, height: 15, border: "2px solid var(--border)", borderTopColor: "var(--text-muted)", borderRadius: "50%" }} className="spin" />
+-  );
+-}
+-
+-function ScoreBar({ score }: { score: number }) {
+-  return (
+-    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+-      <div style={{ width: 32, height: 3, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
+-        <div style={{ height: "100%", width: `${score * 100}%`, background: "var(--text-faint)", borderRadius: 2 }} />
+-      </div>
+-      <span style={{ fontSize: 10, color: "var(--text-faint)", letterSpacing: "0.5px", fontVariantNumeric: "tabular-nums" }}>
+-        {(score * 100).toFixed(0)}%
+-      </span>
+-    </div>
+-  );
+-}
+-
+-export default function Search() {
+-  const { status } = useSidecar();
+-  const navigate = useNavigate();
+-
+-  const [query, setQuery] = useState("");
+-  const [results, setResults] = useState<SearchResult[]>([]);
+-  const [loading, setLoading] = useState(false);
+-  const [searched, setSearched] = useState(false);
+-  const [error, setError] = useState<string | null>(null);
+-
+-  const debouncedQuery = useDebounce(query, 350);
+-  const abortRef = useRef<AbortController | null>(null);
+-  const inputRef = useRef<HTMLInputElement>(null);
+-
+-  useEffect(() => {
+-    if (!debouncedQuery.trim() || status !== "ready") {
+-      setResults([]); setSearched(false); return;
+-    }
+-    abortRef.current?.abort();
+-    abortRef.current = new AbortController();
+-    setLoading(true); setError(null);
+-
+-    apiPost<SearchResult[]>("/api/search/", { query: debouncedQuery, top_k: 15 })
+-      .then((data) => { setResults(data); setSearched(true); })
+-      .catch((err) => { if (err?.name !== "AbortError") setError(String(err)); })
+-      .finally(() => setLoading(false));
+-  }, [debouncedQuery, status]);
+-
+-  // Keyboard shortcut: Cmd/Ctrl+K to focus
+-  useEffect(() => {
+-    const handler = (e: KeyboardEvent) => {
+-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+-        e.preventDefault();
+-        inputRef.current?.focus();
+-      }
+-    };
+-    window.addEventListener("keydown", handler);
+-    return () => window.removeEventListener("keydown", handler);
+-  }, []);
+-
+-  if (status !== "ready") {
+-    return (
+-      <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center" }}>
+-        <Spinner />
+-      </div>
+-    );
+-  }
+-
+-  return (
+-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+-      {/* Header */}
+-      <div style={{ padding: "32px 40px 24px", borderBottom: "1px solid var(--border)", flexShrink: 0 }} className="fade-in">
+-        <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 20 }}>
+-          <h1 className="heading-display" style={{ margin: 0 }}>Search</h1>
+-          {searched && !loading && (
+-            <span style={{ fontSize: 13, color: "var(--text-faint)" }}>
+-              {results.length === 0 ? "No results" : `${results.length} result${results.length !== 1 ? "s" : ""}`}
+-            </span>
+-          )}
+-        </div>
+-
+-        {/* Search input */}
+-        <div style={{ position: "relative" }}>
+-          <span style={{
+-            position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
+-            color: "var(--text-faint)", pointerEvents: "none",
+-            transition: "color 0.15s ease",
+-          }}>
+-            <IconSearch />
+-          </span>
+-          {loading && (
+-            <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)" }}>
+-              <Spinner />
+-            </span>
+-          )}
+-          {!loading && query && (
+-            <button
+-              onClick={() => { setQuery(""); setResults([]); setSearched(false); inputRef.current?.focus(); }}
+-              style={{
+-                position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
+-                background: "none", border: "none", cursor: "pointer",
+-                color: "var(--text-faint)", display: "flex", alignItems: "center", justifyContent: "center",
+-                padding: 2, borderRadius: 3, transition: "color 0.15s",
+-              }}
+-              onMouseEnter={e => (e.currentTarget.style.color = "var(--text-muted)")}
+-              onMouseLeave={e => (e.currentTarget.style.color = "var(--text-faint)")}
+-              title="Clear"
+-            >
+-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+-              </svg>
+-            </button>
+-          )}
+-          <input
+-            id="search-input"
+-            ref={inputRef}
+-            type="text"
+-            value={query}
+-            onChange={(e) => setQuery(e.target.value)}
+-            placeholder="Search your knowledge base…"
+-            autoFocus
+-            className="warp-input"
+-            style={{
+-              paddingLeft: 46, paddingRight: 42, fontSize: 15,
+-              paddingTop: 13, paddingBottom: 13, borderRadius: 10,
+-            }}
+-          />
+-          {/* Shortcut hint */}
+-          {!query && (
+-            <span style={{
+-              position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
+-              fontSize: 10, color: "var(--text-faint)", letterSpacing: "0.5px",
+-              background: "var(--surface-alt)", border: "1px solid var(--border)",
+-              borderRadius: 4, padding: "2px 5px", pointerEvents: "none",
+-            }}>
+-              ⌘K
+-            </span>
+-          )}
+-        </div>
+-      </div>
+-
+-      {/* Results */}
+-      <div style={{ flex: 1, overflowY: "auto", padding: "20px 40px" }}>
+-        {error && (
+-          <div style={{
+-            marginBottom: 16, padding: "12px 16px",
+-            background: "var(--error-bg)", border: "1px solid rgba(192,112,112,0.25)",
+-            borderRadius: 8, fontSize: 13, color: "var(--error)",
+-          }}>
+-            {error}
+-          </div>
+-        )}
+-
+-        {/* Empty / prompt state */}
+-        {!query.trim() && (
+-          <div style={{
+-            display: "flex", flexDirection: "column", alignItems: "center",
+-            justifyContent: "center", paddingTop: 72, textAlign: "center",
+-          }} className="fade-in">
+-            <div style={{ color: "var(--text-faint)", opacity: 0.35, marginBottom: 18 }}>
+-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+-                <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+-              </svg>
+-            </div>
+-            <p style={{ fontSize: 16, color: "var(--text-secondary)", margin: "0 0 8px", fontWeight: 400 }}>Search your documents</p>
+-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0, lineHeight: 1.6 }}>
+-              Semantic + full-text search across your entire knowledge base.<br/>
+-              Type to begin.
+-            </p>
+-          </div>
+-        )}
+-
+-        {/* No results */}
+-        {searched && results.length === 0 && !loading && (
+-          <div style={{
+-            display: "flex", flexDirection: "column", alignItems: "center",
+-            justifyContent: "center", paddingTop: 72, textAlign: "center",
+-          }} className="fade-in">
+-            <p style={{ fontSize: 16, color: "var(--text-secondary)", margin: "0 0 8px" }}>
+-              Nothing found for "{query}"
+-            </p>
+-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+-              Try different keywords or upload more documents
+-            </p>
+-          </div>
+-        )}
+-
+-        {/* Results list */}
+-        {results.length > 0 && (
+-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }} className="stagger-children">
+-            {results.map((result) => (
+-              <button
+-                key={result.doc_id}
+-                onClick={() => navigate(`/doc/${result.doc_id}`)}
+-                style={{
+-                  width: "100%", textAlign: "left", cursor: "pointer",
+-                  padding: "16px 20px",
+-                  background: "var(--surface)",
+-                  border: "1px solid var(--border)",
+-                  borderRadius: "var(--radius-card)",
+-                  display: "block",
+-                  transition: "border-color 0.18s, background 0.18s, box-shadow 0.18s",
+-                  fontFamily: "inherit",
+-                }}
+-                onMouseEnter={(e) => {
+-                  e.currentTarget.style.borderColor = "var(--border-hover)";
+-                  e.currentTarget.style.background = "var(--surface-raised)";
+-                  e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.22)";
+-                }}
+-                onMouseLeave={(e) => {
+-                  e.currentTarget.style.borderColor = "var(--border)";
+-                  e.currentTarget.style.background = "var(--surface)";
+-                  e.currentTarget.style.boxShadow = "none";
+-                }}
+-              >
+-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+-                  <h3 style={{
+-                    fontSize: 14, fontWeight: 500, color: "var(--text-primary)",
+-                    margin: 0, lineHeight: 1.4,
+-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+-                    flex: 1,
+-                  }}>
+-                    {result.title || "Untitled"}
+-                  </h3>
+-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+-                    <ScoreBar score={result.score} />
+-                    <span style={{ color: "var(--text-faint)", opacity: 0.5 }}><IconArrow /></span>
+-                  </div>
+-                </div>
+-                {result.folder && (
+-                  <span className="tag" style={{ marginBottom: 8, display: "inline-flex" }}>
+-                    <IconFolder /> {result.folder}
+-                  </span>
+-                )}
+-                <HighlightedSnippet snippet={result.snippet} />
+-              </button>
+-            ))}
+-          </div>
+-        )}
+-      </div>
+-    </div>
+-  );
+-}
+diff --git a/src/pages/Settings.tsx b/src/pages/Settings.tsx
+index 0096ddf..6528446 100644
+--- a/src/pages/Settings.tsx
++++ b/src/pages/Settings.tsx
+@@ -2,8 +2,7 @@ import { useEffect, useState, useCallback } from "react";
+ import { apiGet, apiPost, apiPut } from "../lib/sidecar";
+ 
+ interface ServiceConfig { base_url: string; api_key: string; model: string; }
+-interface RerankerConfig extends ServiceConfig { enabled: boolean; }
+-interface SettingsData { llm: ServiceConfig; embedding: ServiceConfig; reranker: RerankerConfig; port: number; }
++interface SettingsData { llm: ServiceConfig; port: number; }
+ interface TestResult { type: "success" | "error"; message: string; }
+ 
+ // ── Field label ───────────────────────────────────────────────────
+@@ -90,17 +89,7 @@ const IconLLM = () => (
+     <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+   </svg>
+ );
+-const IconEmbed = () => (
+-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+-    <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+-  </svg>
+-);
+-const IconRerank = () => (
+-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+-    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+-    <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+-  </svg>
+-);
++
+ const IconGeneral = () => (
+   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+     <circle cx="12" cy="12" r="3"/>
+@@ -177,12 +166,10 @@ function ServiceSection({ title, icon, config, onChange, testResult, onTest, tes
+ }
+ 
+ // ── Settings page ─────────────────────────────────────────────────
+-type Tab = "llm" | "embedding" | "reranker" | "general";
++type Tab = "llm" | "general";
+ 
+ const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+   { id: "llm",       label: "LLM",       icon: <IconLLM /> },
+-  { id: "embedding", label: "Embedding", icon: <IconEmbed /> },
+-  { id: "reranker",  label: "Reranker",  icon: <IconRerank /> },
+   { id: "general",   label: "General",   icon: <IconGeneral /> },
+ ];
+ 
+@@ -193,7 +180,6 @@ export default function Settings() {
+   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+   const [saving, setSaving] = useState(false);
+   const [llmTest, setLlmTest] = useState<TestResult | null>(null);
+-  const [embTest, setEmbTest] = useState<TestResult | null>(null);
+   const [original, setOriginal] = useState<SettingsData | null>(null);
+   const [activeTab, setActiveTab] = useState<Tab>("llm");
+ 
+@@ -219,20 +205,7 @@ export default function Settings() {
+     }
+   }, [settings]);
+ 
+-  const testEmbedding = useCallback(async () => {
+-    if (!settings) return;
+-    setEmbTest(null);
+-    try {
+-      const res = await apiPost<{ success: boolean; dimension?: number; error?: string }>("/api/settings/test-embedding", {
+-        base_url: settings.embedding.base_url || "https://api.openai.com/v1", api_key: settings.embedding.api_key, model: settings.embedding.model,
+-      });
+-      setEmbTest(res.success
+-        ? { type: "success", message: `Embedding OK — dimension: ${res.dimension}` }
+-        : { type: "error", message: res.error ?? "Unknown error" });
+-    } catch (err: unknown) {
+-      setEmbTest({ type: "error", message: (err as Error).message });
+-    }
+-  }, [settings]);
++
+ 
+   const save = useCallback(async () => {
+     if (!settings || !original) return;
+@@ -246,17 +219,7 @@ export default function Settings() {
+         payload.llm = { base_url: llmBaseUrl, model: settings.llm.model, api_key: settings.llm.api_key };
+       }
+       
+-      const embBaseUrl = settings.embedding.base_url || "https://api.openai.com/v1";
+-      const embChanged = embBaseUrl !== original.embedding.base_url || settings.embedding.model !== original.embedding.model || settings.embedding.api_key !== original.embedding.api_key;
+-      if (embChanged) {
+-        payload.embedding = { base_url: embBaseUrl, model: settings.embedding.model, api_key: settings.embedding.api_key };
+-      }
+-      
+-      const rerBaseUrl = settings.reranker.base_url || "https://api.openai.com/v1";
+-      const rerChanged = rerBaseUrl !== original.reranker.base_url || settings.reranker.model !== original.reranker.model || settings.reranker.api_key !== original.reranker.api_key || settings.reranker.enabled !== original.reranker.enabled;
+-      if (rerChanged) {
+-        payload.reranker = { base_url: rerBaseUrl, model: settings.reranker.model, api_key: settings.reranker.api_key, enabled: settings.reranker.enabled };
+-      }
++
+       
+       if (settings.port !== original.port) payload.port = settings.port;
+       const updated = await apiPut<SettingsData>("/api/settings", payload);
+@@ -275,16 +238,7 @@ export default function Settings() {
+     if (settings.llm.model !== original.llm.model) return true;
+     if (settings.llm.api_key !== original.llm.api_key) return true;
+     
+-    const embBaseUrl = settings.embedding.base_url || "https://api.openai.com/v1";
+-    if (embBaseUrl !== original.embedding.base_url) return true;
+-    if (settings.embedding.model !== original.embedding.model) return true;
+-    if (settings.embedding.api_key !== original.embedding.api_key) return true;
+ 
+-    const rerBaseUrl = settings.reranker.base_url || "https://api.openai.com/v1";
+-    if (rerBaseUrl !== original.reranker.base_url) return true;
+-    if (settings.reranker.model !== original.reranker.model) return true;
+-    if (settings.reranker.api_key !== original.reranker.api_key) return true;
+-    if (settings.reranker.enabled !== original.reranker.enabled) return true;
+ 
+     if (settings.port !== original.port) return true;
+ 
+@@ -319,7 +273,7 @@ export default function Settings() {
+           <div>
+             <h1 className="heading-display" style={{ margin: "0 0 6px" }}>Settings</h1>
+             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+-              Configure LLM, embedding, and reranker providers.
++              Configure LLM provider and general settings.
+             </p>
+           </div>
+           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
+@@ -393,44 +347,7 @@ export default function Settings() {
+             />
+           )}
+ 
+-          {activeTab === "embedding" && (
+-            <ServiceSection
+-              title="Embedding Model"
+-              icon={<IconEmbed />}
+-              config={settings.embedding}
+-              onChange={(cfg) => setSettings({ ...settings, embedding: cfg })}
+-              testResult={embTest}
+-              onTest={testEmbedding}
+-              testLabel="Test connection"
+-            />
+-          )}
+ 
+-          {activeTab === "reranker" && (
+-            <div className="warp-card">
+-              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
+-                <span style={{ color: "var(--text-faint)" }}><IconRerank /></span>
+-                <h2 style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: 0 }}>Reranker</h2>
+-              </div>
+-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22, padding: "12px 16px", background: "var(--surface-alt)", borderRadius: 8, border: "1px solid var(--border)" }}>
+-                <Toggle checked={settings.reranker.enabled} onChange={(v) => setSettings({ ...settings, reranker: { ...settings.reranker, enabled: v } })} />
+-                <div>
+-                  <div style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>Enable Reranker</div>
+-                  <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>Improves search relevance using a cross-encoder model</div>
+-                </div>
+-              </div>
+-              <div style={{ display: "flex", flexDirection: "column", gap: 14, opacity: settings.reranker.enabled ? 1 : 0.45, transition: "opacity 0.2s" }}>
+-                <WarpInput label="Base URL" value={settings.reranker.base_url} onChange={(v) => setSettings({ ...settings, reranker: { ...settings.reranker, base_url: v } })} placeholder="https://api.openai.com/v1" />
+-                <WarpInput label="API Key" value={settings.reranker.api_key} onChange={(v) => setSettings({ ...settings, reranker: { ...settings.reranker, api_key: v } })} placeholder="sk-..." type="password" />
+-                <WarpInput label="Model" value={settings.reranker.model} onChange={(v) => setSettings({ ...settings, reranker: { ...settings.reranker, model: v } })} placeholder="rerank-v1" />
+-              </div>
+-              <div style={{ marginTop: 18 }}>
+-                <button disabled className="btn-ghost" style={{ fontSize: 12, padding: "6px 16px", opacity: 0.35, cursor: "not-allowed" }}>
+-                  Test connection
+-                </button>
+-                <span style={{ marginLeft: 10, fontSize: 10, color: "var(--text-faint)", letterSpacing: "1px", textTransform: "uppercase" }}>coming soon</span>
+-              </div>
+-            </div>
+-          )}
+ 
+           {activeTab === "general" && (
+             <div className="warp-card">

@@ -39,3 +39,4 @@ Thumbs.db
 # Compiled sidecar binaries
 src-tauri/bin/api/main-*
 .agent/\n# TypeScript\n*.tsbuildinfo\n
+reference-code/
