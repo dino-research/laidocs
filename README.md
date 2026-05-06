@@ -12,6 +12,7 @@
 - **Folder Tree**: Custom document organization
 - **Hybrid Search**: Semantic (embedding) + Full-text (BM25) search
 - **Document Q&A**: Chat with any document using RAG pipeline
+- **Upload Progress**: Real-time conversion stage tracking via SSE, displayed in the sidebar
 - **Fully Local**: Only connects to your configured LLM API — no data leaves your machine
 
 ## Tech Stack
@@ -129,7 +130,7 @@ On first launch, configure in the Settings page:
 laidocs/
 ├── backend/                  # Python FastAPI sidecar
 │   ├── api/                  # Route handlers
-│   │   ├── documents.py      # Upload, CRUD, crawl, reindex
+│   │   ├── documents.py      # Upload (SSE progress), CRUD, crawl, reindex
 │   │   ├── folders.py
 │   │   ├── search.py
 │   │   ├── chat.py
@@ -137,20 +138,39 @@ laidocs/
 │   ├── core/
 │   │   ├── config.py         # App settings (pydantic-settings)
 │   │   ├── database.py       # SQLite + LanceDB init
+│   │   ├── exceptions.py     # Custom exception types
 │   │   └── vault.py          # Filesystem vault manager + ASSETS_DIR
 │   ├── services/
 │   │   ├── converter.py      # DoclingConverter (Docling pipeline)
 │   │   ├── picture_serializer.py  # VaultPictureSerializer
 │   │   ├── crawler.py        # WebCrawler (Crawl4AI)
-│   │   └── indexer.py        # LanceDB vector indexer
+│   │   ├── indexer.py        # LanceDB vector indexer
+│   │   ├── rag.py            # RAG pipeline
+│   │   └── search.py         # Hybrid search (FTS5 + LanceDB)
 │   ├── main.py               # FastAPI app + startup lifespan
 │   └── requirements.txt
 ├── src/                      # React + TypeScript frontend
 │   ├── components/
+│   │   ├── Sidebar.tsx         # Folder tree + upload progress display
+│   │   ├── UploadDialog.tsx    # File upload dialog
+│   │   ├── MarkdownPreview.tsx # ByteMD markdown renderer
+│   │   ├── ChatPanel.tsx       # Document Q&A chat
+│   │   ├── CrawlDialog.tsx     # URL crawl dialog
+│   │   ├── Layout.tsx          # App shell layout
+│   │   └── TopBar.tsx          # Top navigation bar
+│   ├── context/
+│   │   ├── FolderContext.tsx    # Folder tree state
+│   │   └── UploadContext.tsx    # Upload progress tracking (SSE)
+│   ├── lib/
+│   │   ├── sidecar.ts          # Backend API client
+│   │   └── api-upload.ts       # Upload + SSE progress consumer
 │   ├── pages/
 │   │   ├── DocumentEditor.tsx  # ByteMD editor + chat panel
-│   │   └── ...
-│   └── ...
+│   │   ├── Documents.tsx       # Document list view
+│   │   ├── Search.tsx          # Hybrid search interface
+│   │   └── Settings.tsx        # LLM / embedding / reranker config
+│   └── styles/
+│       └── bytemd-theme.css    # ByteMD dark theme
 ├── tests/                    # Python test suite
 │   ├── test_converter_fallback.py
 │   ├── test_docling_converter.py
@@ -158,6 +178,11 @@ laidocs/
 │   └── test_vault_assets.py
 └── src-tauri/                # Tauri Rust shell
 ```
+
+## Documentation
+
+- [DESIGN.md](DESIGN.md) — Visual design system (Warp-inspired warm dark theme)
+- [docs/upload_flow_review.md](docs/upload_flow_review.md) — Upload flow architecture review (code-level analysis of the full upload pipeline)
 
 ## Running Tests
 
