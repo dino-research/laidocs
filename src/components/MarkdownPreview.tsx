@@ -9,19 +9,19 @@ interface MarkdownPreviewProps {
 
 export default function MarkdownPreview({ content, compact }: MarkdownPreviewProps) {
   const fs = compact ? 12 : 15;
-  const headingFont = compact ? "inherit" : "'DM Serif Display', Georgia, serif";
+  const headingFont = compact ? "inherit" : "'Outfit', ui-sans-serif, system-ui, sans-serif";
   return (
     <div style={{ overflow: "auto", height: compact ? "auto" : "100%", padding: compact ? 0 : "28px 32px" }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => (
-            <h1 style={{ fontFamily: headingFont, fontSize: compact ? fs + 2 : 24, fontWeight: compact ? 600 : 400, color: "var(--text-primary)", marginBottom: compact ? 8 : 16, marginTop: compact ? 12 : 24, paddingBottom: compact ? 0 : 8, borderBottom: compact ? "none" : "1px solid var(--border)", lineHeight: 1.3, letterSpacing: "-0.24px" }}>
+            <h1 style={{ fontFamily: headingFont, fontSize: compact ? fs + 2 : 24, fontWeight: compact ? 600 : 600, color: "var(--text-primary)", marginBottom: compact ? 8 : 16, marginTop: compact ? 12 : 24, paddingBottom: compact ? 0 : 8, borderBottom: compact ? "none" : "1px solid var(--border)", lineHeight: 1.3, letterSpacing: "-0.3px" }}>
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 style={{ fontFamily: headingFont, fontSize: compact ? fs + 1 : 20, fontWeight: compact ? 600 : 400, color: "var(--text-primary)", marginBottom: compact ? 6 : 12, marginTop: compact ? 10 : 20, paddingBottom: compact ? 0 : 6, borderBottom: compact ? "none" : "1px solid var(--border)", lineHeight: 1.3, letterSpacing: "-0.2px" }}>
+            <h2 style={{ fontFamily: headingFont, fontSize: compact ? fs + 1 : 20, fontWeight: compact ? 600 : 600, color: "var(--text-primary)", marginBottom: compact ? 6 : 12, marginTop: compact ? 10 : 20, paddingBottom: compact ? 0 : 6, borderBottom: compact ? "none" : "1px solid var(--border)", lineHeight: 1.3, letterSpacing: "-0.2px" }}>
               {children}
             </h2>
           ),
@@ -76,7 +76,7 @@ export default function MarkdownPreview({ content, compact }: MarkdownPreviewPro
                 <code style={{
                   background: "var(--surface-alt)", color: "var(--text-secondary)",
                   padding: "2px 6px", borderRadius: 5, fontSize: 13,
-                  fontFamily: "'Geist Mono', 'Courier New', monospace",
+                  fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Courier New', monospace",
                   border: "1px solid var(--border)",
                 }}>
                   {children}
@@ -84,7 +84,7 @@ export default function MarkdownPreview({ content, compact }: MarkdownPreviewPro
               );
             }
             return (
-              <code style={{ fontFamily: "'Geist Mono', 'Courier New', monospace", fontSize: 13 }} className={className}>
+              <code style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Courier New', monospace", fontSize: 13 }} className={className}>
                 {children}
               </code>
             );
@@ -94,7 +94,7 @@ export default function MarkdownPreview({ content, compact }: MarkdownPreviewPro
               background: "var(--surface-alt)", borderRadius: 10, padding: "16px 20px",
               marginBottom: 16, overflowX: "auto",
               border: "1px solid var(--border)", fontSize: 13,
-              fontFamily: "'Geist Mono', 'Courier New', monospace",
+              fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Courier New', monospace",
             }}>
               {children}
             </pre>

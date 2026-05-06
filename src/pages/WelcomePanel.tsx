@@ -20,76 +20,157 @@ const IconGlobe = () => (
   </svg>
 );
 
-const IconSparkle = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
-  </svg>
-);
+// ── Technology badge ──────────────────────────────────────────────
 
-const IconBook = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-  </svg>
-);
+function TechBadge({ label }: { label: string }) {
+  return (
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      fontSize: 10,
+      fontWeight: 500,
+      color: "var(--text-muted)",
+      background: "var(--surface-alt)",
+      border: "1px solid var(--border)",
+      borderRadius: 5,
+      padding: "2px 8px",
+      letterSpacing: "0.3px",
+      whiteSpace: "nowrap",
+    }}>
+      {label}
+    </span>
+  );
+}
 
-const IconChat = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-  </svg>
-);
+// ── Technology showcase card ──────────────────────────────────────
 
-// ── Feature card ──────────────────────────────────────────────────
+interface TechCardProps {
+  icon: React.ReactNode;
+  label: string;
+  headline: string;
+  description: string;
+  techStack: string[];
+  accentColor: string;
+  delay: number;
+}
 
-function FeatureCard({ icon, title, description, delay }: { icon: React.ReactNode; title: string; description: string; delay: number }) {
+function TechCard({ icon, label, headline, description, techStack, accentColor, delay }: TechCardProps) {
   return (
     <div
       className="fade-in-up"
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 10,
-        padding: "20px",
-        borderRadius: 12,
+        gap: 12,
+        padding: "22px 20px 18px",
+        borderRadius: 14,
         background: "var(--surface)",
         border: "1px solid var(--border)",
-        transition: "all 0.25s cubic-bezier(0.22, 1, 0.36, 1)",
         animationDelay: `${delay}ms`,
-        cursor: "default",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = "var(--border-hover)";
-        e.currentTarget.style.background = "var(--surface-raised)";
-        e.currentTarget.style.transform = "translateY(-2px)";
-        e.currentTarget.style.boxShadow = "0 8px 30px rgba(0,0,0,0.3)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = "var(--border)";
-        e.currentTarget.style.background = "var(--surface)";
-        e.currentTarget.style.transform = "translateY(0)";
-        e.currentTarget.style.boxShadow = "none";
+        position: "relative",
+        overflow: "hidden",
       }}
     >
+      {/* Subtle top accent line */}
       <div style={{
-        width: 36, height: 36, borderRadius: 10,
-        background: "var(--accent-subtle)",
-        border: "1px solid var(--border-glow)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        color: "var(--accent-text)",
+        position: "absolute",
+        top: 0,
+        left: "20%",
+        right: "20%",
+        height: 1,
+        background: `linear-gradient(90deg, transparent, ${accentColor}, transparent)`,
+        opacity: 0.5,
+      }} />
+
+      {/* Category label */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
       }}>
-        {icon}
+        <div style={{
+          width: 28, height: 28, borderRadius: 8,
+          background: `${accentColor}15`,
+          border: `1px solid ${accentColor}25`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: accentColor,
+          flexShrink: 0,
+        }}>
+          {icon}
+        </div>
+        <span style={{
+          fontSize: 9,
+          fontWeight: 600,
+          letterSpacing: "1.5px",
+          textTransform: "uppercase" as const,
+          color: accentColor,
+          opacity: 0.85,
+        }}>
+          {label}
+        </span>
       </div>
-      <div>
-        <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", marginBottom: 4 }}>
-          {title}
-        </div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
-          {description}
-        </div>
+
+      {/* Headline */}
+      <div style={{
+        fontSize: 14,
+        fontWeight: 600,
+        color: "var(--text-primary)",
+        lineHeight: 1.35,
+        letterSpacing: "-0.1px",
+      }}>
+        {headline}
+      </div>
+
+      {/* Description */}
+      <div style={{
+        fontSize: 12,
+        color: "var(--text-muted)",
+        lineHeight: 1.6,
+      }}>
+        {description}
+      </div>
+
+      {/* Tech stack badges */}
+      <div style={{
+        display: "flex",
+        flexWrap: "wrap" as const,
+        gap: 5,
+        marginTop: 2,
+      }}>
+        {techStack.map((tech) => (
+          <TechBadge key={tech} label={tech} />
+        ))}
       </div>
     </div>
   );
 }
+
+// ── Card icon components ──────────────────────────────────────────
+
+const IconDocConvert = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
+  </svg>
+);
+
+const IconBrain = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z" />
+    <line x1="10" y1="22" x2="14" y2="22" />
+    <line x1="9" y1="14" x2="15" y2="14" />
+  </svg>
+);
+
+const IconMessageAI = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    <circle cx="9" cy="10" r="1" fill="currentColor" />
+    <circle cx="15" cy="10" r="1" fill="currentColor" />
+  </svg>
+);
 
 // ── WelcomePanel ──────────────────────────────────────────────────
 
@@ -138,7 +219,7 @@ export default function WelcomePanel() {
           flexDirection: "column",
           alignItems: "center",
           textAlign: "center",
-          maxWidth: 540,
+          maxWidth: 620,
           position: "relative",
           zIndex: 1,
         }}
@@ -182,7 +263,7 @@ export default function WelcomePanel() {
             color: "var(--text-muted)",
             lineHeight: 1.65,
             margin: "0 0 32px",
-            maxWidth: 400,
+            maxWidth: 420,
             animationDelay: "0.12s",
           }}
         >
@@ -192,7 +273,7 @@ export default function WelcomePanel() {
         {/* Action Buttons */}
         <div
           className="fade-in-up"
-          style={{ display: "flex", gap: 12, marginBottom: 48, animationDelay: "0.18s" }}
+          style={{ display: "flex", gap: 12, marginBottom: 40, animationDelay: "0.18s" }}
         >
           <button
             onClick={() => setShowUpload(true)}
@@ -211,31 +292,107 @@ export default function WelcomePanel() {
           </button>
         </div>
 
-        {/* Feature cards */}
+        {/* Section divider with label */}
+        <div
+          className="fade-in-up"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            width: "100%",
+            marginBottom: 20,
+            animationDelay: "0.22s",
+          }}
+        >
+          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+          <span style={{
+            fontSize: 9,
+            fontWeight: 600,
+            letterSpacing: "2px",
+            textTransform: "uppercase" as const,
+            color: "var(--text-faint)",
+          }}>
+            Powered by
+          </span>
+          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+        </div>
+
+        {/* Technology showcase cards */}
         <div style={{
           display: "grid",
           gridTemplateColumns: "repeat(3, 1fr)",
           gap: 12,
           width: "100%",
+          textAlign: "left",
         }}>
-          <FeatureCard
-            icon={<IconBook />}
-            title="Smart Import"
-            description="PDF, DOCX, PPTX, HTML — auto-converted to searchable Markdown."
-            delay={240}
+          <TechCard
+            icon={<IconDocConvert />}
+            label="Document Engine"
+            headline="Smart conversion with layout understanding"
+            description="Extracts text, tables, and images from complex documents while preserving their original structure."
+            techStack={["Docling", "Markdown", "OCR"]}
+            accentColor="#34d399"
+            delay={260}
           />
-          <FeatureCard
-            icon={<IconSparkle />}
-            title="AI-Powered"
-            description="Semantic search and RAG-based Q&A grounded in your documents."
-            delay={300}
+          <TechCard
+            icon={<IconBrain />}
+            label="AI Engine"
+            headline="Semantic search with vector embeddings"
+            description="Understands meaning, not just keywords. Your documents are indexed as vectors for deep semantic retrieval."
+            techStack={["Gemini", "LlamaIndex", "LanceDB"]}
+            accentColor="#a5b4fc"
+            delay={320}
           />
-          <FeatureCard
-            icon={<IconChat />}
-            title="Chat with Docs"
-            description="Ask questions about any document and get instant, cited answers."
-            delay={360}
+          <TechCard
+            icon={<IconMessageAI />}
+            label="Chat Engine"
+            headline="RAG-grounded answers with citations"
+            description="Every response is grounded in your documents using Retrieval-Augmented Generation — no hallucination."
+            techStack={["RAG", "Gemini 2.0 Flash", "Streaming"]}
+            accentColor="#fbbf24"
+            delay={380}
           />
+        </div>
+
+        {/* Copyright & Version */}
+        <div
+          className="fade-in-up"
+          style={{
+            marginTop: 32,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+            animationDelay: "0.44s",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 11, color: "var(--text-faint)", letterSpacing: "0.2px" }}>
+              © 2026 Dino
+            </span>
+            <span style={{ fontSize: 11, color: "var(--text-faint)", opacity: 0.4 }}>·</span>
+            <span style={{
+              fontSize: 10,
+              fontWeight: 500,
+              color: "var(--text-faint)",
+              background: "var(--surface-alt)",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
+              padding: "1px 6px",
+              letterSpacing: "0.3px",
+            }}>
+              v1.0
+            </span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2" />
+              <path d="M22 4L12 13 2 4" />
+            </svg>
+            <span style={{ fontSize: 11, color: "var(--text-faint)", letterSpacing: "0.2px" }}>
+              ngohongthai.uet@gmail.com
+            </span>
+          </div>
         </div>
       </div>
 
