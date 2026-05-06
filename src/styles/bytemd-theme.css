@@ -19,7 +19,7 @@
   height: 100% !important;
   border: none !important;
   background: var(--bg) !important;
-  font-family: 'Fira Sans', system-ui, -apple-system, sans-serif !important;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
 }
 
 /* ── Toolbar ──────────────────────────────────────────────────────────────── */
@@ -107,13 +107,13 @@
 .CodeMirror {
   background: transparent !important;
   color: var(--text-secondary) !important;
-  font-family: 'Fira Code', 'Courier New', monospace !important;
-  font-size: 13px !important;
-  line-height: 1.75 !important;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+  font-size: 15px !important;
+  line-height: 1.8 !important;
   letter-spacing: 0.01em !important;
 }
 .CodeMirror-scroll {
-  padding: 12px 0 !important;
+  padding: 16px 0 !important;
 }
 .CodeMirror-gutters {
   background: var(--surface) !important;
@@ -121,14 +121,64 @@
 }
 .CodeMirror-linenumber {
   color: var(--text-faint) !important;
-  font-size: 11px !important;
+  font-size: 12px !important;
 }
 .CodeMirror-cursor {
   border-left-color: var(--text-primary) !important;
 }
 .CodeMirror-selected {
-  background: rgba(99, 102, 241, 0.18) !important;
+  background: rgba(250, 249, 246, 0.10) !important;
 }
+
+/* ── CodeMirror Markdown Syntax Highlighting ──────────────────────────────── */
+/* Neutralize all token colors to use the warm design-system palette.          */
+/* Headings */
+.cm-header {
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+}
+.cm-header-1 { font-size: 1.35em !important; }
+.cm-header-2 { font-size: 1.2em !important; }
+.cm-header-3 { font-size: 1.1em !important; }
+.cm-header-4, .cm-header-5, .cm-header-6 { font-size: 1em !important; }
+
+/* Emphasis & strong */
+.cm-strong { color: var(--text-primary) !important; font-weight: 600 !important; }
+.cm-em     { color: var(--text-secondary) !important; font-style: italic !important; }
+
+/* Links & URLs */
+.cm-link   { color: var(--text-secondary) !important; text-decoration: underline !important; }
+.cm-url    { color: var(--text-muted) !important; }
+
+/* Inline code & fenced code markers */
+.cm-comment {
+  color: var(--text-muted) !important;
+  font-family: 'Geist Mono', 'Courier New', monospace !important;
+  font-size: 0.9em !important;
+}
+
+/* List bullets, blockquote markers */
+.cm-variable-2 { color: var(--text-secondary) !important; }
+.cm-variable-3 { color: var(--text-secondary) !important; }
+.cm-keyword    { color: var(--text-secondary) !important; }
+.cm-atom       { color: var(--text-secondary) !important; }
+.cm-number     { color: var(--text-secondary) !important; }
+.cm-def        { color: var(--text-secondary) !important; }
+.cm-property   { color: var(--text-secondary) !important; }
+.cm-operator   { color: var(--text-muted) !important; }
+.cm-meta       { color: var(--text-muted) !important; }
+.cm-qualifier  { color: var(--text-muted) !important; }
+.cm-builtin    { color: var(--text-secondary) !important; }
+.cm-bracket    { color: var(--text-muted) !important; }
+.cm-tag        { color: var(--text-secondary) !important; }
+.cm-attribute  { color: var(--text-muted) !important; }
+.cm-string     { color: var(--text-secondary) !important; }
+.cm-string-2   { color: var(--text-secondary) !important; }
+.cm-hr         { color: var(--text-faint) !important; }
+.cm-image-marker    { color: var(--text-muted) !important; }
+.cm-image-alt-text  { color: var(--text-secondary) !important; }
+.cm-formatting  { color: var(--text-faint) !important; }
+.cm-quote       { color: var(--text-muted) !important; font-style: italic !important; }
 
 /* ── TOC (Table of Contents) panel ───────────────────────────────────────── */
 .bytemd-toc {
@@ -191,7 +241,7 @@
 .markdown-body {
   background: var(--bg) !important;
   color: var(--text-secondary) !important;
-  font-family: 'Fira Sans', system-ui, -apple-system, sans-serif !important;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
   padding: 28px 32px !important;
   font-size: 15px !important;
   line-height: 1.75 !important;
@@ -273,7 +323,7 @@
   padding: 2px 6px !important;
   border-radius: 4px !important;
   font-size: 12.5px !important;
-  font-family: 'Fira Code', 'Courier New', monospace !important;
+  font-family: 'Geist Mono', 'Courier New', monospace !important;
   border: 1px solid var(--border) !important;
 }
 .markdown-body pre {
