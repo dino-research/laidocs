@@ -31,7 +31,7 @@ function loadCollapsed(): boolean {
 export default function Layout() {
   const [width, setWidth] = useState(loadWidth);
   const [collapsed, setCollapsed] = useState(loadCollapsed);
-  const isDragging = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Persist width
   useEffect(() => { localStorage.setItem(KEY_WIDTH, String(width)); }, [width]);
@@ -42,27 +42,34 @@ export default function Layout() {
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    isDragging.current = true;
+    setIsDragging(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
 
     const onMouseMove = (ev: MouseEvent) => {
-      if (!isDragging.current) return;
       const next = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, ev.clientX));
       setWidth(next);
     };
 
     const onMouseUp = () => {
-      isDragging.current = false;
+      setIsDragging(false);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+
+    return () => {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  }, []);
+  }, [isDragging]);
 
   const toggleCollapse = useCallback(() => setCollapsed((c) => !c), []);
 

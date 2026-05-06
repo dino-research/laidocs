@@ -9,3 +9,4 @@
 | 5 | WelcomePanel + route updates | done |
 | 6 | Download button in editor | done |
 | 7 | Cleanup and polish | done |
+| 8 | Code Review and Fixes | [x] |

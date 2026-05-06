@@ -22,6 +22,8 @@ interface FileTreeProps {
   tree: FolderNode[];
   activeDocId: string | null;
   onFileClick: (docId: string) => void;
+  activeFolder: string | null;
+  onFolderClick: (path: string) => void;
 }
 
 // ── Persistence ───────────────────────────────────────────────────
@@ -182,6 +184,8 @@ function TreeFolder({
   onFileClick,
   expandedSet,
   onToggleFolder,
+  activeFolder,
+  onFolderClick,
 }: {
   folder: FolderNode;
   depth: number;
@@ -191,13 +195,18 @@ function TreeFolder({
   onFileClick: (docId: string) => void;
   expandedSet: Set<string>;
   onToggleFolder: (path: string) => void;
+  activeFolder: string | null;
+  onFolderClick: (path: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
 
   return (
     <div>
       <button
-        onClick={onToggle}
+        onClick={(e) => {
+          onToggle();
+          onFolderClick(folder.path);
+        }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
@@ -213,8 +222,8 @@ function TreeFolder({
           fontSize: 13,
           fontWeight: 500,
           fontFamily: "inherit",
-          color: hovered ? "var(--text-primary)" : "var(--text-secondary)",
-          background: hovered ? "var(--surface-hover)" : "transparent",
+          color: (folder.path === activeFolder) ? "var(--text-primary)" : hovered ? "var(--text-primary)" : "var(--text-secondary)",
+          background: (folder.path === activeFolder) ? "var(--surface-alt)" : hovered ? "var(--surface-hover)" : "transparent",
           cursor: "pointer",
           textAlign: "left",
           transition: "color 0.12s, background 0.12s",
@@ -260,6 +269,8 @@ function TreeFolder({
               onFileClick={onFileClick}
               expandedSet={expandedSet}
               onToggleFolder={onToggleFolder}
+              activeFolder={activeFolder}
+              onFolderClick={onFolderClick}
             />
           ))}
           {/* Files */}
@@ -268,7 +279,7 @@ function TreeFolder({
               key={doc.id}
               doc={doc}
               depth={depth + 1}
-              isActive={activeDocId === doc.id}
+              isActive={!activeFolder && activeDocId === doc.id}
               onClick={() => onFileClick(doc.id)}
             />
           ))}
@@ -293,7 +304,7 @@ function TreeFolder({
 
 // ── FileTree (main export) ────────────────────────────────────────
 
-export default function FileTree({ tree, activeDocId, onFileClick }: FileTreeProps) {
+export default function FileTree({ tree, activeDocId, onFileClick, activeFolder, onFolderClick }: FileTreeProps) {
   const [expandedSet, setExpandedSet] = useState<Set<string>>(loadExpanded);
 
   // Persist expand state
@@ -339,6 +350,8 @@ export default function FileTree({ tree, activeDocId, onFileClick }: FileTreePro
           onFileClick={onFileClick}
           expandedSet={expandedSet}
           onToggleFolder={toggleFolder}
+          activeFolder={activeFolder}
+          onFolderClick={onFolderClick}
         />
       ))}
     </div>

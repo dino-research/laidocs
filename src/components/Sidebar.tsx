@@ -6,6 +6,17 @@ import { useSidecar } from "../hooks/useSidecar";
 import { useUpload, PendingUpload } from "../context/UploadContext";
 import FileTree, { FolderNode } from "./FileTree";
 
+const getFolderOfDoc = (folders: FolderNode[], docId: string): string | null => {
+  for (const f of folders) {
+    if (f.documents.some((d) => d.id === docId)) return f.path;
+    if (f.children && f.children.length > 0) {
+      const found = getFolderOfDoc(f.children, docId);
+      if (found) return found;
+    }
+  }
+  return null;
+};
+
 // ── SVG Icons ──────────────────────────────────────────────────────
 const IconHome = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -274,9 +285,14 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
     setNewFileError("");
     setCreatingFile(true);
     try {
+      let targetFolder = activeFolder;
+      if (!targetFolder && activeDocId) {
+        targetFolder = getFolderOfDoc(tree, activeDocId);
+      }
+      
       const result = await apiPost<{ id: string }>("/api/documents/create", {
         filename: name,
-        folder: activeFolder || "unsorted",
+        folder: targetFolder || "unsorted",
       });
       setNewFileName("");
       setShowNewFile(false);
@@ -299,6 +315,7 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
   };
 
   const handleFileClick = (docId: string) => {
+    setActiveFolder(null);
     navigate(`/doc/${docId}`);
   };
 
@@ -504,6 +521,8 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
             tree={tree}
             activeDocId={activeDocId}
             onFileClick={handleFileClick}
+            activeFolder={activeFolder}
+            onFolderClick={(path) => setActiveFolder(path)}
           />
         </div>
       </nav>

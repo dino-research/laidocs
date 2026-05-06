@@ -7,45 +7,10 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from ..core.database import get_db
-from ..core.vault import VAULT_DIR, vault
+from ..core.vault import vault
 from ..models.document import DocumentSummary, FolderCreate, FolderNode, FolderRename
 
 router = APIRouter(prefix="/api/folders", tags=["folders"])
-
-
-# ── Helpers ──────────────────────────────────────────────────────
-
-
-def _count_documents(folder_path: str) -> int:
-    """Count .meta.json files in a vault folder."""
-    fp = VAULT_DIR / folder_path
-    if not fp.exists():
-        return 0
-    return len(list(fp.glob("*.meta.json")))
-
-
-def _get_folder_documents(folder_path: str) -> list[DocumentSummary]:
-    """Get document summaries for a specific folder (non-recursive)."""
-    import json
-
-    fp = VAULT_DIR / folder_path
-    if not fp.exists():
-        return []
-    docs: list[DocumentSummary] = []
-    for meta_file in sorted(fp.glob("*.meta.json")):
-        try:
-            data = json.loads(meta_file.read_text(encoding="utf-8"))
-            docs.append(
-                DocumentSummary(
-                    id=data.get("doc_id", ""),
-                    title=data.get("title", ""),
-                    filename=data.get("filename", ""),
-                    source_type=data.get("source_type", "file"),
-                )
-            )
-        except (json.JSONDecodeError, OSError):
-            continue
-    return docs
 
 
 # ── Routes ───────────────────────────────────────────────────────
@@ -55,6 +20,11 @@ def _get_folder_documents(folder_path: str) -> list[DocumentSummary]:
 def list_folders():
     """Return a flat list of all folders with document counts."""
     folders = vault.list_folders()
+    
+    with get_db() as db:
+        cursor = db.execute("SELECT folder, COUNT(*) as count FROM documents GROUP BY folder")
+        counts = {row["folder"] or "": row["count"] for row in cursor.fetchall()}
+
     result: list[FolderNode] = []
     for f in folders:
         result.append(
@@ -62,7 +32,7 @@ def list_folders():
                 path=f["path"],
                 name=f["name"],
                 parent_path=f.get("parent_path"),
-                document_count=_count_documents(f["path"]),
+                document_count=counts.get(f["path"], 0),
             )
         )
     return result
@@ -72,6 +42,22 @@ def list_folders():
 def get_folder_tree():
     """Return a nested tree of all folders with their documents."""
     folders = vault.list_folders()
+    
+    with get_db() as db:
+        cursor = db.execute("SELECT id, folder, title, filename, source_type FROM documents ORDER BY title COLLATE NOCASE")
+        docs_by_folder: dict[str, list[DocumentSummary]] = {}
+        for row in cursor.fetchall():
+            folder_path = row["folder"] or ""
+            if folder_path not in docs_by_folder:
+                docs_by_folder[folder_path] = []
+            docs_by_folder[folder_path].append(
+                DocumentSummary(
+                    id=row["id"],
+                    title=row["title"] or row["filename"].removesuffix(".md"),
+                    filename=row["filename"],
+                    source_type=row["source_type"]
+                )
+            )
 
     # Build lookup: path -> FolderNode
     node_map: dict[str, FolderNode] = {}
@@ -81,8 +67,8 @@ def get_folder_tree():
             path=path,
             name=f["name"],
             parent_path=f.get("parent_path"),
-            document_count=_count_documents(path),
-            documents=_get_folder_documents(path),
+            document_count=len(docs_by_folder.get(path, [])),
+            documents=docs_by_folder.get(path, []),
         )
 
     # Build tree: attach children to parents
@@ -106,6 +92,11 @@ def get_folder_tree():
 @router.post("/", response_model=FolderNode, status_code=201)
 def create_folder(body: FolderCreate):
     """Create a new folder on disk and register it in SQLite."""
+    # Validate folder depth (max 3 levels)
+    parts = Path(body.path).parts
+    if len(parts) > 3:
+        raise HTTPException(status_code=400, detail="Maximum folder depth is 3 levels.")
+        
     # Determine parent_path from the given path
     parent = str(Path(body.path).parent) if str(Path(body.path).parent) != "." else None
 
