@@ -1,7 +1,7 @@
 """Document CRUD endpoints -- upload, list, get, update, delete.
 
 Auto-indexing: every mutating endpoint triggers an async background task
-that updates the vector index (LanceDB) for the affected document.
+that builds the tree index for the affected document.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import uuid
 from ..core.vault import vault, ASSETS_DIR
 from ..services.converter import DoclingConverter
 from ..services.crawler import WebCrawler
-from ..services.indexer import get_indexer
+from ..services.tree_index import build_tree_index
 
 
 def _sse(stage: str, **extra) -> str:
@@ -218,7 +218,18 @@ async def upload_document(
 
             await asyncio.to_thread(_db_save)
 
-            background_tasks.add_task(get_indexer().index_document, meta.doc_id, markdown)
+            # Build tree index in background
+            async def _build_and_store_tree(doc_id: str, md: str):
+                tree = await build_tree_index(md)
+                if tree:
+                    import json as _j
+                    with get_db() as conn:
+                        conn.execute(
+                            "UPDATE documents SET tree_index=? WHERE id=?",
+                            (_j.dumps(tree, ensure_ascii=False), doc_id),
+                        )
+
+            background_tasks.add_task(asyncio.run, _build_and_store_tree(meta.doc_id, markdown))
 
             yield _sse("saved",
                        id=meta.doc_id,
@@ -296,7 +307,18 @@ async def crawl_url(background_tasks: BackgroundTasks, body: CrawlRequest):
 
             await asyncio.to_thread(_db_save)
 
-            background_tasks.add_task(get_indexer().index_document, meta.doc_id, markdown)
+            # Build tree index in background
+            async def _build_and_store_tree_crawl(doc_id: str, md: str):
+                tree = await build_tree_index(md)
+                if tree:
+                    import json as _j
+                    with get_db() as conn:
+                        conn.execute(
+                            "UPDATE documents SET tree_index=? WHERE id=?",
+                            (_j.dumps(tree, ensure_ascii=False), doc_id),
+                        )
+
+            background_tasks.add_task(asyncio.run, _build_and_store_tree_crawl(meta.doc_id, markdown))
 
             yield _sse("saved",
                        id=meta.doc_id,
@@ -382,39 +404,32 @@ async def update_document(doc_id: str, body: dict, background_tasks: BackgroundT
             (markdown, new_title, new_filename, doc_id),
         )
 
-    # Re-index in background
-    background_tasks.add_task(get_indexer().index_document, doc_id, markdown)
+    # Rebuild tree index in background
+    import asyncio as _asyncio
+
+    async def _rebuild_tree(did: str, md: str):
+        tree = await build_tree_index(md)
+        import json as _j
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE documents SET tree_index=? WHERE id=?",
+                (_j.dumps(tree, ensure_ascii=False) if tree else None, did),
+            )
+
+    background_tasks.add_task(_asyncio.run, _rebuild_tree(doc_id, markdown))
 
     return {"id": doc_id, "updated": True}
 
 
-@documents_router.post("/reindex")
-async def reindex_all_documents(background_tasks: BackgroundTasks):
-    """Re-index all documents into the vector store.
-
-    Useful after a schema migration (e.g. the LanceDB vector column was
-    recreated with the correct FixedSizeList type).  Runs in a background
-    task so the response returns immediately.
-    """
-    def _do_reindex():
-        indexer = get_indexer()
-        results = indexer.reindex_all()
-        total = sum(results.values())
-        print(f"[reindex] Done: {len(results)} documents, {total} chunks")
-
-    background_tasks.add_task(_do_reindex)
-    return {"status": "reindex_started"}
 
 
 @documents_router.delete("/{doc_id}")
-async def delete_document(doc_id: str, background_tasks: BackgroundTasks):
-    """Delete a document from the vault, SQLite, and vector index."""
+async def delete_document(doc_id: str):
+    """Delete a document from the vault and SQLite."""
     try:
         vault.delete_document(doc_id)
         with get_db() as conn:
             conn.execute("DELETE FROM documents WHERE id=?", (doc_id,))
-        # Remove vectors in background
-        background_tasks.add_task(get_indexer().remove_document, doc_id)
         return {"deleted": True}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Document not found")
