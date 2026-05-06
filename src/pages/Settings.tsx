@@ -2,8 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { apiGet, apiPost, apiPut } from "../lib/sidecar";
 
 interface ServiceConfig { base_url: string; api_key: string; model: string; }
-interface RerankerConfig extends ServiceConfig { enabled: boolean; }
-interface SettingsData { llm: ServiceConfig; embedding: ServiceConfig; reranker: RerankerConfig; port: number; }
+interface SettingsData { llm: ServiceConfig; port: number; }
 interface TestResult { type: "success" | "error"; message: string; }
 
 // ── Field label ───────────────────────────────────────────────────
@@ -90,17 +89,7 @@ const IconLLM = () => (
     <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
   </svg>
 );
-const IconEmbed = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-  </svg>
-);
-const IconRerank = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-    <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-  </svg>
-);
+
 const IconGeneral = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3"/>
@@ -177,12 +166,10 @@ function ServiceSection({ title, icon, config, onChange, testResult, onTest, tes
 }
 
 // ── Settings page ─────────────────────────────────────────────────
-type Tab = "llm" | "embedding" | "reranker" | "general";
+type Tab = "llm" | "general";
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "llm",       label: "LLM",       icon: <IconLLM /> },
-  { id: "embedding", label: "Embedding", icon: <IconEmbed /> },
-  { id: "reranker",  label: "Reranker",  icon: <IconRerank /> },
   { id: "general",   label: "General",   icon: <IconGeneral /> },
 ];
 
@@ -193,7 +180,6 @@ export default function Settings() {
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [llmTest, setLlmTest] = useState<TestResult | null>(null);
-  const [embTest, setEmbTest] = useState<TestResult | null>(null);
   const [original, setOriginal] = useState<SettingsData | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("llm");
 
@@ -219,20 +205,7 @@ export default function Settings() {
     }
   }, [settings]);
 
-  const testEmbedding = useCallback(async () => {
-    if (!settings) return;
-    setEmbTest(null);
-    try {
-      const res = await apiPost<{ success: boolean; dimension?: number; error?: string }>("/api/settings/test-embedding", {
-        base_url: settings.embedding.base_url || "https://api.openai.com/v1", api_key: settings.embedding.api_key, model: settings.embedding.model,
-      });
-      setEmbTest(res.success
-        ? { type: "success", message: `Embedding OK — dimension: ${res.dimension}` }
-        : { type: "error", message: res.error ?? "Unknown error" });
-    } catch (err: unknown) {
-      setEmbTest({ type: "error", message: (err as Error).message });
-    }
-  }, [settings]);
+
 
   const save = useCallback(async () => {
     if (!settings || !original) return;
@@ -246,17 +219,7 @@ export default function Settings() {
         payload.llm = { base_url: llmBaseUrl, model: settings.llm.model, api_key: settings.llm.api_key };
       }
       
-      const embBaseUrl = settings.embedding.base_url || "https://api.openai.com/v1";
-      const embChanged = embBaseUrl !== original.embedding.base_url || settings.embedding.model !== original.embedding.model || settings.embedding.api_key !== original.embedding.api_key;
-      if (embChanged) {
-        payload.embedding = { base_url: embBaseUrl, model: settings.embedding.model, api_key: settings.embedding.api_key };
-      }
-      
-      const rerBaseUrl = settings.reranker.base_url || "https://api.openai.com/v1";
-      const rerChanged = rerBaseUrl !== original.reranker.base_url || settings.reranker.model !== original.reranker.model || settings.reranker.api_key !== original.reranker.api_key || settings.reranker.enabled !== original.reranker.enabled;
-      if (rerChanged) {
-        payload.reranker = { base_url: rerBaseUrl, model: settings.reranker.model, api_key: settings.reranker.api_key, enabled: settings.reranker.enabled };
-      }
+
       
       if (settings.port !== original.port) payload.port = settings.port;
       const updated = await apiPut<SettingsData>("/api/settings", payload);
@@ -275,16 +238,7 @@ export default function Settings() {
     if (settings.llm.model !== original.llm.model) return true;
     if (settings.llm.api_key !== original.llm.api_key) return true;
     
-    const embBaseUrl = settings.embedding.base_url || "https://api.openai.com/v1";
-    if (embBaseUrl !== original.embedding.base_url) return true;
-    if (settings.embedding.model !== original.embedding.model) return true;
-    if (settings.embedding.api_key !== original.embedding.api_key) return true;
 
-    const rerBaseUrl = settings.reranker.base_url || "https://api.openai.com/v1";
-    if (rerBaseUrl !== original.reranker.base_url) return true;
-    if (settings.reranker.model !== original.reranker.model) return true;
-    if (settings.reranker.api_key !== original.reranker.api_key) return true;
-    if (settings.reranker.enabled !== original.reranker.enabled) return true;
 
     if (settings.port !== original.port) return true;
 
@@ -319,7 +273,7 @@ export default function Settings() {
           <div>
             <h1 className="heading-display" style={{ margin: "0 0 6px" }}>Settings</h1>
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-              Configure LLM, embedding, and reranker providers.
+              Configure LLM provider and general settings.
             </p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
@@ -393,44 +347,7 @@ export default function Settings() {
             />
           )}
 
-          {activeTab === "embedding" && (
-            <ServiceSection
-              title="Embedding Model"
-              icon={<IconEmbed />}
-              config={settings.embedding}
-              onChange={(cfg) => setSettings({ ...settings, embedding: cfg })}
-              testResult={embTest}
-              onTest={testEmbedding}
-              testLabel="Test connection"
-            />
-          )}
 
-          {activeTab === "reranker" && (
-            <div className="warp-card">
-              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
-                <span style={{ color: "var(--text-faint)" }}><IconRerank /></span>
-                <h2 style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: 0 }}>Reranker</h2>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22, padding: "12px 16px", background: "var(--surface-alt)", borderRadius: 8, border: "1px solid var(--border)" }}>
-                <Toggle checked={settings.reranker.enabled} onChange={(v) => setSettings({ ...settings, reranker: { ...settings.reranker, enabled: v } })} />
-                <div>
-                  <div style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>Enable Reranker</div>
-                  <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>Improves search relevance using a cross-encoder model</div>
-                </div>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 14, opacity: settings.reranker.enabled ? 1 : 0.45, transition: "opacity 0.2s" }}>
-                <WarpInput label="Base URL" value={settings.reranker.base_url} onChange={(v) => setSettings({ ...settings, reranker: { ...settings.reranker, base_url: v } })} placeholder="https://api.openai.com/v1" />
-                <WarpInput label="API Key" value={settings.reranker.api_key} onChange={(v) => setSettings({ ...settings, reranker: { ...settings.reranker, api_key: v } })} placeholder="sk-..." type="password" />
-                <WarpInput label="Model" value={settings.reranker.model} onChange={(v) => setSettings({ ...settings, reranker: { ...settings.reranker, model: v } })} placeholder="rerank-v1" />
-              </div>
-              <div style={{ marginTop: 18 }}>
-                <button disabled className="btn-ghost" style={{ fontSize: 12, padding: "6px 16px", opacity: 0.35, cursor: "not-allowed" }}>
-                  Test connection
-                </button>
-                <span style={{ marginLeft: 10, fontSize: 10, color: "var(--text-faint)", letterSpacing: "1px", textTransform: "uppercase" }}>coming soon</span>
-              </div>
-            </div>
-          )}
 
           {activeTab === "general" && (
             <div className="warp-card">

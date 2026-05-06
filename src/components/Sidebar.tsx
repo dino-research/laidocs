@@ -398,13 +398,6 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
           </div>
         )}
 
-        {/* Search */}
-        <div style={{ marginTop: 2 }}>
-          <NavItem active={isSearchPage} onClick={() => navigate("/search")}>
-            <IconSearch />
-            Search
-          </NavItem>
-        </div>
 
         {/* Explorer section */}
         <div style={{ marginTop: 20 }}>
