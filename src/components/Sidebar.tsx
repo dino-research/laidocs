@@ -409,14 +409,14 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
             padding: "0 6px 8px",
           }}>
             <span className="label-upper">Explorer</span>
-            <div style={{ display: "flex", gap: 2 }}>
+            <div style={{ display: "flex", gap: 4 }}>
               <button
                 onClick={() => { setShowNewFile(!showNewFile); setNewFileName(""); setNewFileError(""); setShowNewFolder(false); }}
                 className="btn-icon"
                 title="New File"
-                style={{ width: 20, height: 20, borderRadius: 4 }}
+                style={{ width: 26, height: 26, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: showNewFile ? "var(--surface-alt)" : "transparent" }}
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <polyline points="14 2 14 8 20 8" />
                   <line x1="12" y1="11" x2="12" y2="17" />
@@ -427,9 +427,12 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
                 onClick={() => { setShowNewFolder(!showNewFolder); setNewFolderName(""); setNewFolderError(""); setShowNewFile(false); }}
                 className="btn-icon"
                 title="New Folder"
-                style={{ width: 20, height: 20, borderRadius: 4 }}
+                style={{ width: 26, height: 26, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: showNewFolder ? "var(--surface-alt)" : "transparent" }}
               >
-                <IconPlus />
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
               </button>
             </div>
           </div>
@@ -523,6 +526,7 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
             onFileClick={handleFileClick}
             activeFolder={activeFolder}
             onFolderClick={(path) => setActiveFolder(path)}
+            triggerRefreshFolders={triggerRefreshFolders}
           />
         </div>
       </nav>

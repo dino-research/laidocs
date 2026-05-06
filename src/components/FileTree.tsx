@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { apiPut, apiDelete } from "../lib/sidecar";
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -24,6 +25,13 @@ interface FileTreeProps {
   onFileClick: (docId: string) => void;
   activeFolder: string | null;
   onFolderClick: (path: string) => void;
+  triggerRefreshFolders?: () => void;
+}
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  target: { type: 'file' | 'folder', id: string, name: string, path: string };
 }
 
 // ── Persistence ───────────────────────────────────────────────────
@@ -119,6 +127,40 @@ function IndentGuides({ depth }: { depth: number }) {
   );
 }
 
+// ── Rename Input ──────────────────────────────────────────────────
+
+function RenameInput({
+  initialValue,
+  depth,
+  onSubmit,
+  onCancel
+}: {
+  initialValue: string;
+  depth: number;
+  onSubmit: (v: string) => void;
+  onCancel: () => void;
+}) {
+  const [val, setVal] = useState(initialValue);
+
+  return (
+    <div style={{ paddingLeft: 8 + depth * INDENT_PX, paddingRight: 8, paddingBottom: 2, paddingTop: 2, display: "flex" }}>
+      <input
+        autoFocus
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSubmit(val);
+          if (e.key === "Escape") onCancel();
+        }}
+        onBlur={() => onSubmit(val)}
+        className="warp-input"
+        style={{ width: "100%", fontSize: 13, padding: "2px 6px", borderRadius: 4 }}
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
+  );
+}
+
 // ── TreeFile ──────────────────────────────────────────────────────
 
 function TreeFile({
@@ -126,17 +168,40 @@ function TreeFile({
   depth,
   isActive,
   onClick,
+  onContextMenu,
+  isRenaming,
+  onRenameSubmit,
+  onRenameCancel
 }: {
   doc: DocNode;
   depth: number;
   isActive: boolean;
   onClick: () => void;
+  onContextMenu: (e: React.MouseEvent, target: ContextMenuState['target']) => void;
+  isRenaming: boolean;
+  onRenameSubmit: (id: string, v: string, type: 'file' | 'folder') => void;
+  onRenameCancel: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+
+  if (isRenaming) {
+    return (
+      <RenameInput
+        initialValue={doc.title || doc.filename}
+        depth={depth}
+        onSubmit={(v) => onRenameSubmit(doc.id, v, 'file')}
+        onCancel={onRenameCancel}
+      />
+    );
+  }
 
   return (
     <button
       onClick={onClick}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu(e, { type: 'file', id: doc.id, name: doc.title || doc.filename, path: doc.id });
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -186,6 +251,10 @@ function TreeFolder({
   onToggleFolder,
   activeFolder,
   onFolderClick,
+  onContextMenu,
+  renameTarget,
+  onRenameSubmit,
+  onRenameCancel
 }: {
   folder: FolderNode;
   depth: number;
@@ -197,63 +266,81 @@ function TreeFolder({
   onToggleFolder: (path: string) => void;
   activeFolder: string | null;
   onFolderClick: (path: string) => void;
+  onContextMenu: (e: React.MouseEvent, target: ContextMenuState['target']) => void;
+  renameTarget: { id: string, type: 'file' | 'folder' } | null;
+  onRenameSubmit: (id: string, v: string, type: 'file' | 'folder') => void;
+  onRenameCancel: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const isRenaming = renameTarget?.type === 'folder' && renameTarget.id === folder.path;
 
   return (
     <div>
-      <button
-        onClick={(e) => {
-          onToggle();
-          onFolderClick(folder.path);
-        }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          position: "relative",
-          display: "flex",
-          alignItems: "center",
-          gap: 5,
-          width: "100%",
-          padding: "3px 8px 3px 0",
-          paddingLeft: 8 + depth * INDENT_PX,
-          border: "none",
-          borderRadius: 4,
-          fontSize: 13,
-          fontWeight: 500,
-          fontFamily: "inherit",
-          color: (folder.path === activeFolder) ? "var(--text-primary)" : hovered ? "var(--text-primary)" : "var(--text-secondary)",
-          background: (folder.path === activeFolder) ? "var(--surface-alt)" : hovered ? "var(--surface-hover)" : "transparent",
-          cursor: "pointer",
-          textAlign: "left",
-          transition: "color 0.12s, background 0.12s",
-          lineHeight: "22px",
-          minHeight: 26,
-        }}
-      >
-        <IndentGuides depth={depth} />
-        <span style={{ color: "var(--text-faint)", display: "flex" }}>
-          <IconChevron expanded={expanded} />
-        </span>
-        <span style={{ color: "var(--text-faint)", display: "flex", flexShrink: 0 }}>
-          {expanded ? <IconFolderOpen /> : <IconFolderClosed />}
-        </span>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-          {folder.name}
-        </span>
-        {folder.document_count > 0 && (
-          <span style={{
-            flexShrink: 0,
-            fontSize: 10,
-            color: "var(--text-faint)",
-            letterSpacing: "0.3px",
-            fontVariantNumeric: "tabular-nums",
-            fontWeight: 400,
-          }}>
-            {folder.document_count}
+      {isRenaming ? (
+        <RenameInput
+          initialValue={folder.name}
+          depth={depth}
+          onSubmit={(v) => onRenameSubmit(folder.path, v, 'folder')}
+          onCancel={onRenameCancel}
+        />
+      ) : (
+        <button
+          onClick={(e) => {
+            onToggle();
+            onFolderClick(folder.path);
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            onContextMenu(e, { type: 'folder', id: folder.path, name: folder.name, path: folder.path });
+          }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            width: "100%",
+            padding: "3px 8px 3px 0",
+            paddingLeft: 8 + depth * INDENT_PX,
+            border: "none",
+            borderRadius: 4,
+            fontSize: 13,
+            fontWeight: 500,
+            fontFamily: "inherit",
+            color: (folder.path === activeFolder) ? "var(--text-primary)" : hovered ? "var(--text-primary)" : "var(--text-secondary)",
+            background: (folder.path === activeFolder) ? "var(--surface-alt)" : hovered ? "var(--surface-hover)" : "transparent",
+            cursor: "pointer",
+            textAlign: "left",
+            transition: "color 0.12s, background 0.12s",
+            lineHeight: "22px",
+            minHeight: 26,
+          }}
+        >
+          <IndentGuides depth={depth} />
+          <span style={{ color: "var(--text-faint)", display: "flex" }}>
+            <IconChevron expanded={expanded} />
           </span>
-        )}
-      </button>
+          <span style={{ color: "var(--text-faint)", display: "flex", flexShrink: 0 }}>
+            {expanded ? <IconFolderOpen /> : <IconFolderClosed />}
+          </span>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+            {folder.name}
+          </span>
+          {folder.document_count > 0 && (
+            <span style={{
+              flexShrink: 0,
+              fontSize: 10,
+              color: "var(--text-faint)",
+              letterSpacing: "0.3px",
+              fontVariantNumeric: "tabular-nums",
+              fontWeight: 400,
+            }}>
+              {folder.document_count}
+            </span>
+          )}
+        </button>
+      )}
 
       {expanded && (
         <div>
@@ -271,6 +358,10 @@ function TreeFolder({
               onToggleFolder={onToggleFolder}
               activeFolder={activeFolder}
               onFolderClick={onFolderClick}
+              onContextMenu={onContextMenu}
+              renameTarget={renameTarget}
+              onRenameSubmit={onRenameSubmit}
+              onRenameCancel={onRenameCancel}
             />
           ))}
           {/* Files */}
@@ -281,6 +372,10 @@ function TreeFolder({
               depth={depth + 1}
               isActive={!activeFolder && activeDocId === doc.id}
               onClick={() => onFileClick(doc.id)}
+              onContextMenu={onContextMenu}
+              isRenaming={renameTarget?.type === 'file' && renameTarget.id === doc.id}
+              onRenameSubmit={onRenameSubmit}
+              onRenameCancel={onRenameCancel}
             />
           ))}
           {/* Empty folder hint */}
@@ -304,13 +399,21 @@ function TreeFolder({
 
 // ── FileTree (main export) ────────────────────────────────────────
 
-export default function FileTree({ tree, activeDocId, onFileClick, activeFolder, onFolderClick }: FileTreeProps) {
+export default function FileTree({ tree, activeDocId, onFileClick, activeFolder, onFolderClick, triggerRefreshFolders }: FileTreeProps) {
   const [expandedSet, setExpandedSet] = useState<Set<string>>(loadExpanded);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{ id: string, type: 'file' | 'folder' } | null>(null);
 
   // Persist expand state
   useEffect(() => {
     saveExpanded(expandedSet);
   }, [expandedSet]);
+
+  useEffect(() => {
+    const handleGlobalClick = () => setContextMenu(null);
+    window.addEventListener("click", handleGlobalClick);
+    return () => window.removeEventListener("click", handleGlobalClick);
+  }, []);
 
   const toggleFolder = useCallback((path: string) => {
     setExpandedSet((prev) => {
@@ -323,6 +426,46 @@ export default function FileTree({ tree, activeDocId, onFileClick, activeFolder,
       return next;
     });
   }, []);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, target: ContextMenuState['target']) => {
+    setContextMenu({ x: e.clientX, y: e.clientY, target });
+  }, []);
+
+  const handleRenameSubmit = async (id: string, newName: string, type: 'file' | 'folder') => {
+    setRenameTarget(null);
+    if (!newName.trim()) return;
+    try {
+      if (type === 'folder') {
+        const parts = id.split('/');
+        parts.pop();
+        const parentPath = parts.join('/');
+        const newPath = parentPath ? `${parentPath}/${newName}` : newName;
+        if (newPath !== id) {
+          await apiPut('/api/folders/rename', { path: id, new_path: newPath });
+        }
+      } else {
+        await apiPut(`/api/documents/${id}`, { title: newName, filename: newName });
+      }
+      if (triggerRefreshFolders) triggerRefreshFolders();
+    } catch (err) {
+      alert("Failed to rename: " + (err as Error).message);
+    }
+  };
+
+  const handleDelete = async (target: ContextMenuState['target']) => {
+    const msg = target.type === 'folder' ? `Delete folder "${target.name}" and all its contents?` : `Delete document "${target.name}"?`;
+    if (!window.confirm(msg)) return;
+    try {
+      if (target.type === 'folder') {
+        await apiDelete(`/api/folders/${target.path}`);
+      } else {
+        await apiDelete(`/api/documents/${target.id}`);
+      }
+      if (triggerRefreshFolders) triggerRefreshFolders();
+    } catch (err) {
+      alert("Failed to delete: " + (err as Error).message);
+    }
+  };
 
   if (tree.length === 0) {
     return (
@@ -338,22 +481,69 @@ export default function FileTree({ tree, activeDocId, onFileClick, activeFolder,
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-      {tree.map((folder) => (
-        <TreeFolder
-          key={folder.path}
-          folder={folder}
-          depth={0}
-          expanded={expandedSet.has(folder.path)}
-          onToggle={() => toggleFolder(folder.path)}
-          activeDocId={activeDocId}
-          onFileClick={onFileClick}
-          expandedSet={expandedSet}
-          onToggleFolder={toggleFolder}
-          activeFolder={activeFolder}
-          onFolderClick={onFolderClick}
-        />
-      ))}
+    <div style={{ position: "relative" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+        {tree.map((folder) => (
+          <TreeFolder
+            key={folder.path}
+            folder={folder}
+            depth={0}
+            expanded={expandedSet.has(folder.path)}
+            onToggle={() => toggleFolder(folder.path)}
+            activeDocId={activeDocId}
+            onFileClick={onFileClick}
+            expandedSet={expandedSet}
+            onToggleFolder={toggleFolder}
+            activeFolder={activeFolder}
+            onFolderClick={onFolderClick}
+            onContextMenu={handleContextMenu}
+            renameTarget={renameTarget}
+            onRenameSubmit={handleRenameSubmit}
+            onRenameCancel={() => setRenameTarget(null)}
+          />
+        ))}
+      </div>
+
+      {contextMenu && (
+        <div
+          style={{
+            position: "fixed",
+            left: contextMenu.x,
+            top: contextMenu.y,
+            background: "var(--surface-alt)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            zIndex: 1000,
+            minWidth: 120,
+            padding: 4,
+            display: "flex",
+            flexDirection: "column",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="btn-ghost"
+            style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4 }}
+            onClick={() => {
+              setRenameTarget({ id: contextMenu.target.id, type: contextMenu.target.type });
+              setContextMenu(null);
+            }}
+          >
+            Rename
+          </button>
+          <button
+            className="btn-ghost"
+            style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4, color: "var(--error)" }}
+            onClick={() => {
+              handleDelete(contextMenu.target);
+              setContextMenu(null);
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }

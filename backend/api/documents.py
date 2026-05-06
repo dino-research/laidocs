@@ -347,20 +347,30 @@ async def download_document(doc_id: str):
 
 @documents_router.put("/{doc_id}")
 async def update_document(doc_id: str, body: dict, background_tasks: BackgroundTasks):
-    """Update a document's Markdown content."""
-    markdown = body.get("content", "")
-
+    """Update a document's Markdown content and metadata."""
     result = vault.get_document(doc_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    _, meta = result
+    old_content, meta = result
+    
+    markdown = body.get("content", old_content)
+    new_title = body.get("title", meta.title)
+    new_filename = body.get("filename", meta.filename)
+    if new_filename and not new_filename.endswith(".md"):
+        new_filename += ".md"
+        
+    if new_filename != meta.filename:
+        try:
+            vault.delete_document(doc_id)
+        except FileNotFoundError:
+            pass
 
     vault.save_document(
         folder=meta.folder,
-        filename=meta.filename,
+        filename=new_filename,
         content=markdown,
-        title=meta.title,
+        title=new_title,
         source_type=meta.source_type,
         original_path=meta.original_path,
         doc_id=doc_id,
@@ -368,8 +378,8 @@ async def update_document(doc_id: str, body: dict, background_tasks: BackgroundT
 
     with get_db() as conn:
         conn.execute(
-            "UPDATE documents SET content=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-            (markdown, doc_id),
+            "UPDATE documents SET content=?, title=?, filename=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (markdown, new_title, new_filename, doc_id),
         )
 
     # Re-index in background
