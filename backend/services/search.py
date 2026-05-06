@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..core.config import Settings, get_settings
-from ..core.database import get_db, get_lance_table
+from ..core.database import get_db
 
 # ---------------------------------------------------------------------------
 # Result data class
@@ -106,41 +106,11 @@ def _vector_search(
 ) -> list[tuple[str, float]]:
     """Return (doc_id, score) pairs ranked by cosine similarity.
 
-    Multiple chunks from the same document are merged: only the best
-    chunk score per document is kept.
+    NOTE: LanceDB was removed during the PageIndex migration.
+    Vector search is no longer available; this stub returns an empty
+    list so the hybrid search pipeline degrades gracefully to BM25-only.
     """
-    table = get_lance_table()
-    # LanceDB returns a pandas DataFrame
-    results = (
-        table.search(query_vector)
-        .vector_column_name("vector")
-        .metric("cosine")
-        .limit(top_k * 5)  # over-fetch to handle per-doc dedup
-        .to_pandas()
-    )
-
-    best_per_doc: dict[str, float] = {}
-    for _, row in results.iterrows():
-        doc_id = row["doc_id"]
-        score = float(row.get("_distance", 1.0))
-        # Lower distance = more similar; invert to similarity score
-        sim = max(0.0, 1.0 - score)
-        if doc_id not in best_per_doc or sim > best_per_doc[doc_id]:
-            best_per_doc[doc_id] = sim
-
-    # Optionally filter by folder
-    if folder:
-        with get_db() as conn:
-            folder_docs = {
-                r[0]
-                for r in conn.execute(
-                    "SELECT id FROM documents WHERE folder=?", (folder,)
-                ).fetchall()
-            }
-        best_per_doc = {k: v for k, v in best_per_doc.items() if k in folder_docs}
-
-    ranked = sorted(best_per_doc.items(), key=lambda x: x[1], reverse=True)
-    return ranked[:top_k]
+    return []
 
 
 # ---------------------------------------------------------------------------

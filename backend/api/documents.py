@@ -6,10 +6,12 @@ that builds the tree index for the affected document.
 
 from __future__ import annotations
 
-import json as _json
+import asyncio
+import json
 import os
 import re
 import tempfile
+import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -17,8 +19,6 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Respo
 from pydantic import BaseModel
 
 from ..core.database import get_db
-import uuid
-
 from ..core.vault import vault, ASSETS_DIR
 from ..services.converter import DoclingConverter
 from ..services.crawler import WebCrawler
@@ -28,7 +28,7 @@ from ..services.tree_index import build_tree_index
 def _sse(stage: str, **extra) -> str:
     """Format a single Server-Sent Event line."""
     payload = {"stage": stage, **extra}
-    return f"data: {_json.dumps(payload)}\n\n"
+    return f"data: {json.dumps(payload)}\n\n"
 
 # ── singletons (lazy) ─────────────────────────────────────────────
 # DoclingConverter initialises the Docling pipeline (may load models) and
@@ -99,7 +99,6 @@ async def list_documents(folder: str | None = None):
 @documents_router.post("/create")
 async def create_document(body: CreateDocumentRequest):
     """Create a new empty .md document."""
-    import asyncio
 
     doc_id = str(uuid.uuid4())
     filename = body.filename.strip()
@@ -163,7 +162,6 @@ async def upload_document(
     original_filename = file.filename or "document"
 
     async def _generate():
-        import tempfile, os, asyncio
 
         yield _sse("uploading")
 
@@ -222,14 +220,13 @@ async def upload_document(
             async def _build_and_store_tree(doc_id: str, md: str):
                 tree = await build_tree_index(md)
                 if tree:
-                    import json as _j
                     with get_db() as conn:
                         conn.execute(
                             "UPDATE documents SET tree_index=? WHERE id=?",
-                            (_j.dumps(tree, ensure_ascii=False), doc_id),
+                            (json.dumps(tree, ensure_ascii=False), doc_id),
                         )
 
-            background_tasks.add_task(asyncio.run, _build_and_store_tree(meta.doc_id, markdown))
+            background_tasks.add_task(_build_and_store_tree, meta.doc_id, markdown)
 
             yield _sse("saved",
                        id=meta.doc_id,
@@ -268,7 +265,6 @@ async def crawl_url(background_tasks: BackgroundTasks, body: CrawlRequest):
     folder = body.folder
 
     async def _generate():
-        import asyncio
 
         yield _sse("crawling")
 
@@ -311,14 +307,13 @@ async def crawl_url(background_tasks: BackgroundTasks, body: CrawlRequest):
             async def _build_and_store_tree_crawl(doc_id: str, md: str):
                 tree = await build_tree_index(md)
                 if tree:
-                    import json as _j
                     with get_db() as conn:
                         conn.execute(
                             "UPDATE documents SET tree_index=? WHERE id=?",
-                            (_j.dumps(tree, ensure_ascii=False), doc_id),
+                            (json.dumps(tree, ensure_ascii=False), doc_id),
                         )
 
-            background_tasks.add_task(asyncio.run, _build_and_store_tree_crawl(meta.doc_id, markdown))
+            background_tasks.add_task(_build_and_store_tree_crawl, meta.doc_id, markdown)
 
             yield _sse("saved",
                        id=meta.doc_id,
@@ -405,18 +400,15 @@ async def update_document(doc_id: str, body: dict, background_tasks: BackgroundT
         )
 
     # Rebuild tree index in background
-    import asyncio as _asyncio
-
     async def _rebuild_tree(did: str, md: str):
         tree = await build_tree_index(md)
-        import json as _j
         with get_db() as conn:
             conn.execute(
                 "UPDATE documents SET tree_index=? WHERE id=?",
-                (_j.dumps(tree, ensure_ascii=False) if tree else None, did),
+                (json.dumps(tree, ensure_ascii=False) if tree else None, did),
             )
 
-    background_tasks.add_task(_asyncio.run, _rebuild_tree(doc_id, markdown))
+    background_tasks.add_task(_rebuild_tree, doc_id, markdown)
 
     return {"id": doc_id, "updated": True}
 

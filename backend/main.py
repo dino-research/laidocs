@@ -27,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.core.config import LAIDOCS_HOME, get_settings
-from backend.core.database import init_db
+from backend.core.database import get_db, init_db
 from backend.core.exceptions import LAIDocsError
 from backend.core.vault import VAULT_DIR, ensure_assets_dir
 
@@ -47,6 +47,15 @@ async def lifespan(app: FastAPI):
     VAULT_DIR.mkdir(parents=True, exist_ok=True)
     (LAIDOCS_HOME / "data").mkdir(parents=True, exist_ok=True)
     init_db()
+
+    # Ensure the default "unsorted" (Inbox) folder always exists
+    unsorted_dir = VAULT_DIR / "unsorted"
+    unsorted_dir.mkdir(parents=True, exist_ok=True)
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO folders (path, name) VALUES (?, ?)",
+            ("unsorted", "unsorted"),
+        )
 
     # Mount vault assets directory as static files for image serving
     from fastapi.staticfiles import StaticFiles

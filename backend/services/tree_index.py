@@ -183,9 +183,19 @@ async def _generate_summary(text: str, settings: Settings) -> str:
 
 
 async def generate_summaries(structure: list[dict], settings: Settings) -> list[dict]:
-    """Generate summaries for all nodes in the tree concurrently."""
+    """Generate summaries for all nodes in the tree concurrently.
+
+    Uses a semaphore to limit concurrent LLM requests and avoid
+    rate-limit (429) errors from the provider.
+    """
+    sem = asyncio.Semaphore(5)
     all_nodes = structure_to_list(structure)
     tasks = []
+
+    async def _safe_generate(text: str) -> str:
+        async with sem:
+            return await _generate_summary(text, settings)
+
     for node in all_nodes:
         node_text = node.get('text', '')
         # Short text doesn't need LLM summarisation — use text directly
@@ -196,7 +206,7 @@ async def generate_summaries(structure: list[dict], settings: Settings) -> list[
 
             tasks.append(_passthrough())
         else:
-            tasks.append(_generate_summary(node_text, settings))
+            tasks.append(_safe_generate(node_text))
 
     summaries = await asyncio.gather(*tasks, return_exceptions=True)
 

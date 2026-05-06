@@ -18,6 +18,9 @@ ASSETS_DIR = VAULT_DIR / "assets"
 # System directories that should not appear in user-facing folder listings
 SYSTEM_DIRS = {"assets"}
 
+# Protected directories that appear in listings but cannot be deleted or renamed
+PROTECTED_DIRS = {"unsorted"}
+
 
 def _ensure_vault() -> None:
     VAULT_DIR.mkdir(parents=True, exist_ok=True)
@@ -111,6 +114,8 @@ class VaultManager:
         folder = _norm(folder)
         if folder in SYSTEM_DIRS:
             raise PermissionError(f"Cannot delete system folder: {folder}")
+        if folder in PROTECTED_DIRS:
+            raise PermissionError(f"Cannot delete protected folder: {folder}")
         fp = _folder_path(folder)
         if not fp.exists():
             raise FileNotFoundError(f"Folder not found: {folder}")
@@ -122,8 +127,10 @@ class VaultManager:
         new_folder = _norm(new_folder)
         if folder in SYSTEM_DIRS:
             raise PermissionError(f"Cannot rename system folder: {folder}")
-        if new_folder in SYSTEM_DIRS:
-            raise PermissionError(f"Cannot rename to system folder name: {new_folder}")
+        if folder in PROTECTED_DIRS:
+            raise PermissionError(f"Cannot rename protected folder: {folder}")
+        if new_folder in SYSTEM_DIRS or new_folder in PROTECTED_DIRS:
+            raise PermissionError(f"Cannot rename to reserved folder name: {new_folder}")
         src = _folder_path(folder)
         dst = _folder_path(new_folder)
         if not src.exists():

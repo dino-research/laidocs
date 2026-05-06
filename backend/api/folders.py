@@ -80,11 +80,11 @@ def get_folder_tree():
         else:
             roots.append(node)
 
-    # Sort: folders alphabetically at each level
+    # Sort: "unsorted" pinned to top, then alphabetically at each level
     def _sort_tree(nodes: list[FolderNode]) -> list[FolderNode]:
         for n in nodes:
             n.children = _sort_tree(n.children)
-        return sorted(nodes, key=lambda n: n.name.lower())
+        return sorted(nodes, key=lambda n: (0 if n.path == "unsorted" else 1, n.name.lower()))
 
     return _sort_tree(roots)
 

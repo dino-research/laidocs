@@ -118,7 +118,9 @@ def _select_nodes_sync(tree_index: dict, question: str, settings: Settings) -> l
     match = re.search(r'\[.*?\]', raw, re.DOTALL)
     if match:
         try:
-            return json.loads(match.group())
+            parsed = json.loads(match.group())
+            # Filter to only str/int items — LLM may return objects
+            return [str(nid) for nid in parsed if isinstance(nid, (str, int))]
         except json.JSONDecodeError:
             pass
     return []
@@ -151,13 +153,19 @@ class RAGPipeline:
             # Step 1: LLM selects relevant nodes
             node_ids = _select_nodes_sync(tree_index, question, self._settings)
 
-            if node_ids:
-                # Step 2: Fetch text from selected nodes
-                nodes = find_nodes_by_ids(tree_index['structure'], node_ids)
-                if nodes:
-                    return _build_context_from_nodes(nodes)
+            # If LLM deliberately returned an empty array, the question
+            # is outside the document's scope — return empty context so
+            # the answer generator can say "not found" instead of
+            # hallucinating from an irrelevant raw-text fallback.
+            if isinstance(node_ids, list) and len(node_ids) == 0:
+                return ""
 
-        # Fallback: no tree or no nodes selected → use raw content
+            # Step 2: Fetch text from selected nodes
+            nodes = find_nodes_by_ids(tree_index['structure'], node_ids)
+            if nodes:
+                return _build_context_from_nodes(nodes)
+
+        # Fallback: no tree index at all → use raw content
         content = _get_document_content(doc_id)
         if content:
             return content[:MAX_CONTEXT_CHARS]

@@ -4,6 +4,9 @@ import { apiPut, apiDelete } from "../lib/sidecar";
 
 // ── Types ─────────────────────────────────────────────────────────
 
+const UNSORTED_FOLDER = "unsorted";
+const UNSORTED_DISPLAY_NAME = "Inbox";
+
 export interface DocNode {
   id: string;
   title: string;
@@ -102,6 +105,13 @@ const IconGlobe = () => (
     <circle cx="12" cy="12" r="10" />
     <line x1="2" y1="12" x2="22" y2="12" />
     <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </svg>
+);
+
+const IconInbox = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+    <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
   </svg>
 );
 
@@ -294,7 +304,9 @@ function TreeFolder({
   onRenameCancel: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
-  const isRenaming = renameTarget?.type === 'folder' && renameTarget.id === folder.path;
+  const isUnsorted = folder.path === UNSORTED_FOLDER;
+  const isRenaming = !isUnsorted && renameTarget?.type === 'folder' && renameTarget.id === folder.path;
+  const displayName = isUnsorted ? UNSORTED_DISPLAY_NAME : folder.name;
 
   return (
     <div>
@@ -343,11 +355,11 @@ function TreeFolder({
           <span style={{ color: "var(--text-faint)", display: "flex" }}>
             <IconChevron expanded={expanded} />
           </span>
-          <span style={{ color: "var(--text-faint)", display: "flex", flexShrink: 0 }}>
-            {expanded ? <IconFolderOpen /> : <IconFolderClosed />}
+          <span style={{ color: isUnsorted ? "var(--accent, var(--text-faint))" : "var(--text-faint)", display: "flex", flexShrink: 0 }}>
+            {isUnsorted ? <IconInbox /> : (expanded ? <IconFolderOpen /> : <IconFolderClosed />)}
           </span>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-            {folder.name}
+            {displayName}
           </span>
           {folder.document_count > 0 && (
             <span style={{
@@ -545,6 +557,8 @@ export default function FileTree({ tree, activeDocId, onFileClick, activeFolder,
           {contextMenu.target.type === 'folder' && (onUploadToFolder || onCrawlToFolder) && (
             <div style={{ height: 1, background: "var(--border)", margin: "4px 8px" }} />
           )}
+          {contextMenu.target.path !== UNSORTED_FOLDER && (
+            <>
           <button
             className="btn-ghost"
             style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4 }}
@@ -567,6 +581,8 @@ export default function FileTree({ tree, activeDocId, onFileClick, activeFolder,
           >
             Delete
           </button>
+            </>
+          )}
         </div>
       )}
 
