@@ -415,6 +415,43 @@ body {
   flex-shrink: 0;
 }
 
+/* ── Resize handle ─────────────────────────────────────────── */
+.resize-handle {
+  width: 3px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+  z-index: 10;
+}
+.resize-handle:hover,
+.resize-handle:active {
+  background: var(--border-strong);
+}
+
+/* ── Sidebar expand button (when collapsed) ────────────────── */
+.sidebar-expand-btn {
+  position: absolute;
+  top: 12px;
+  left: 6px;
+  z-index: 20;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+.sidebar-expand-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+}
+
 /* ── Search highlight ───────────────────────────────────── */
 mark, .search-highlight {
   background: rgba(250, 249, 246, 0.12);
