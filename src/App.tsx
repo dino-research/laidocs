@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { FolderProvider } from "./context/FolderContext";
 import { UploadProvider } from "./context/UploadContext";
 import Layout from "./components/Layout";
+import WelcomePanel from "./pages/WelcomePanel";
 import Documents from "./pages/Documents";
 import DocumentEditor from "./pages/DocumentEditor";
 import Search from "./pages/Search";
@@ -14,7 +15,8 @@ export default function App() {
         <UploadProvider>
           <Routes>
             <Route path="/" element={<Layout />}>
-              <Route index element={<Documents />} />
+              <Route index element={<WelcomePanel />} />
+              <Route path="documents" element={<Documents />} />
               <Route path="doc/:id" element={<DocumentEditor />} />
               <Route path="search" element={<Search />} />
               <Route path="settings" element={<Settings />} />
