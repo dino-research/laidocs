@@ -109,11 +109,19 @@ const IconFile = () => (
   </svg>
 );
 
-const saveStatusConfig: Record<SaveStatus, { text: string; color: string }> = {
-  saved:   { text: "Saved",           color: "var(--success)" },
-  saving:  { text: "Saving…",         color: "var(--text-faint)" },
-  unsaved: { text: "Unsaved changes", color: "var(--warn)" },
-  error:   { text: "Save failed",     color: "var(--error)" },
+const IconDownload = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+);
+
+const saveStatusConfig: Record<SaveStatus, { text: string; color: string; icon: string }> = {
+  saved:   { text: "Saved",           color: "var(--success)", icon: "✓" },
+  saving:  { text: "Saving…",         color: "var(--text-faint)", icon: "" },
+  unsaved: { text: "Unsaved changes", color: "var(--warn)", icon: "●" },
+  error:   { text: "Save failed",     color: "var(--error)", icon: "✗" },
 };
 
 const basePlugins = [gfm()];
@@ -130,6 +138,52 @@ export default function DocumentEditor() {
   const [showChat, setShowChat] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
+
+  // ── Chat drawer resize ────────────────────────────────────────
+  const CHAT_MIN = 320;
+  const CHAT_MAX = 700;
+  const CHAT_DEFAULT = 420;
+  const CHAT_WIDTH_KEY = "laidocs-chat-width";
+
+  const [chatWidth, setChatWidth] = useState(() => {
+    try {
+      const v = localStorage.getItem(CHAT_WIDTH_KEY);
+      if (v) return Math.max(CHAT_MIN, Math.min(CHAT_MAX, Number(v)));
+    } catch { /* ignore */ }
+    return CHAT_DEFAULT;
+  });
+  const [isChatDragging, setIsChatDragging] = useState(false);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const chatHasAnimated = useRef(false);
+
+  // Persist chat width
+  useEffect(() => { localStorage.setItem(CHAT_WIDTH_KEY, String(chatWidth)); }, [chatWidth]);
+
+  // Chat drag resize logic
+  useEffect(() => {
+    if (!isChatDragging) return;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const container = chatContainerRef.current?.parentElement;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const newWidth = Math.max(CHAT_MIN, Math.min(CHAT_MAX, rect.right - ev.clientX));
+      setChatWidth(newWidth);
+    };
+
+    const onMouseUp = () => setIsChatDragging(false);
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [isChatDragging]);
 
   const [editorKey, setEditorKey] = useState(0);
   const editorContainerRef = useRef<HTMLDivElement>(null);
@@ -233,8 +287,8 @@ export default function DocumentEditor() {
     alignItems: "center",
     gap: 8,
     borderBottom: "1px solid var(--border)",
-    padding: "0 12px",
-    height: 44,
+    padding: "0 14px",
+    height: 46,
     background: "var(--surface)",
     flexShrink: 0,
   };
@@ -247,15 +301,15 @@ export default function DocumentEditor() {
           <div className="shimmer" style={{ width: 24, height: 24, borderRadius: 6 }} />
           <div className="shimmer" style={{ width: 180, height: 13, marginLeft: 4 }} />
           <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-            {[72, 72, 90].map((w, i) => <div key={i} className="shimmer" style={{ width: w, height: 26, borderRadius: 20 }} />)}
+            {[72, 72, 90].map((w, i) => <div key={i} className="shimmer" style={{ width: w, height: 28, borderRadius: 20 }} />)}
           </div>
         </div>
-        <div style={{ padding: "32px 36px", display: "flex", flexDirection: "column", gap: 14 }}>
-          <div className="shimmer" style={{ width: "55%", height: 15 }} />
-          <div className="shimmer" style={{ width: "80%", height: 13 }} />
-          <div className="shimmer" style={{ width: "70%", height: 13 }} />
-          <div className="shimmer" style={{ width: "90%", height: 13 }} />
-          <div className="shimmer" style={{ width: "45%", height: 13 }} />
+        <div style={{ padding: "36px 40px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="shimmer" style={{ width: "55%", height: 16 }} />
+          <div className="shimmer" style={{ width: "80%", height: 14 }} />
+          <div className="shimmer" style={{ width: "70%", height: 14 }} />
+          <div className="shimmer" style={{ width: "90%", height: 14 }} />
+          <div className="shimmer" style={{ width: "45%", height: 14 }} />
         </div>
       </div>
     );
@@ -268,8 +322,19 @@ export default function DocumentEditor() {
           <button onClick={() => navigate("/")} className="btn-icon"><IconBack /></button>
         </div>
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-          <div>
-            <p style={{ fontSize: 15, color: "var(--text-secondary)", marginBottom: 14 }}>{error || "Document not found"}</p>
+          <div className="fade-in">
+            <div style={{
+              width: 56, height: 56, borderRadius: 16,
+              background: "var(--error-bg)", border: "1px solid rgba(248,113,113,0.15)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              margin: "0 auto 16px", color: "var(--error)",
+            }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+            </div>
+            <p style={{ fontSize: 15, color: "var(--text-secondary)", marginBottom: 16 }}>{error || "Document not found"}</p>
             <button onClick={() => navigate("/")} className="btn-ghost" style={{ fontSize: 13 }}>
               <IconBack /> Back to documents
             </button>
@@ -309,8 +374,27 @@ export default function DocumentEditor() {
 
         <div style={{ flex: 1 }} />
 
-        {/* Save status dot */}
-        <span style={{ fontSize: 11, color: statusInfo.color, letterSpacing: "0.3px", flexShrink: 0, transition: "color 0.2s" }}>
+        {/* Save status */}
+        <span style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+          fontSize: 11,
+          color: statusInfo.color,
+          letterSpacing: "0.3px",
+          flexShrink: 0,
+          transition: "color 0.2s",
+          padding: "3px 8px",
+          borderRadius: "var(--radius-xs)",
+          background: saveStatus === "unsaved" ? "var(--warn-bg)" : saveStatus === "error" ? "var(--error-bg)" : "transparent",
+        }}>
+          {saveStatus === "saving" && (
+            <span className="spin" style={{
+              display: "inline-block", width: 10, height: 10,
+              border: "1.5px solid var(--border)", borderTopColor: "var(--text-muted)", borderRadius: "50%",
+            }} />
+          )}
+          {statusInfo.icon && <span style={{ fontSize: 9 }}>{statusInfo.icon}</span>}
           {statusInfo.text}
         </span>
 
@@ -324,26 +408,23 @@ export default function DocumentEditor() {
             }
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
+          <IconDownload />
         </button>
 
         {/* Chat toggle */}
         <button
           id="chat-with-doc-btn"
-          onClick={() => setShowChat((v) => !v)}
+          onClick={() => { setShowChat((v) => { if (v) chatHasAnimated.current = false; return !v; }); }}
           style={{
             display: "inline-flex", alignItems: "center", gap: 6,
-            padding: "5px 13px", fontSize: 12, fontWeight: 400,
+            padding: "5px 14px", fontSize: 12, fontWeight: 500,
             borderRadius: "var(--radius-pill)",
-            border: `1px solid ${showChat ? "var(--border-strong)" : "var(--border)"}`,
-            cursor: "pointer", transition: "all 0.15s",
-            background: showChat ? "var(--surface-alt)" : "transparent",
-            color: showChat ? "var(--text-primary)" : "var(--text-muted)",
+            border: `1px solid ${showChat ? "var(--accent)" : "var(--border)"}`,
+            cursor: "pointer", transition: "all 0.2s cubic-bezier(0.22,1,0.36,1)",
+            background: showChat ? "var(--accent-subtle)" : "transparent",
+            color: showChat ? "var(--accent-text)" : "var(--text-muted)",
             fontFamily: "inherit",
+            boxShadow: showChat ? "0 0 12px var(--accent-subtle)" : "none",
           }}
           title="Chat with this document (RAG)"
         >
@@ -355,8 +436,16 @@ export default function DocumentEditor() {
         {showDeleteConfirm ? (
           <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0, padding: "0 4px" }}>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Delete?</span>
-            <button onClick={handleDelete} style={{ fontSize: 11, padding: "4px 10px", borderRadius: "var(--radius-pill)", background: "var(--error)", color: "var(--text-primary)", border: "none", cursor: "pointer" }}>Yes</button>
-            <button onClick={() => setShowDeleteConfirm(false)} style={{ fontSize: 11, padding: "4px 10px", borderRadius: "var(--radius-pill)", background: "var(--surface-alt)", color: "var(--text-muted)", border: "1px solid var(--border)", cursor: "pointer" }}>No</button>
+            <button onClick={handleDelete} style={{
+              fontSize: 11, padding: "5px 12px", borderRadius: "var(--radius-pill)",
+              background: "var(--error)", color: "#fff", border: "none", cursor: "pointer",
+              fontWeight: 500,
+            }}>Yes</button>
+            <button onClick={() => setShowDeleteConfirm(false)} style={{
+              fontSize: 11, padding: "5px 12px", borderRadius: "var(--radius-pill)",
+              background: "var(--surface-alt)", color: "var(--text-muted)",
+              border: "1px solid var(--border)", cursor: "pointer",
+            }}>No</button>
           </div>
         ) : (
           <button onClick={() => setShowDeleteConfirm(true)} className="btn-icon" title="Delete document">
@@ -382,13 +471,45 @@ export default function DocumentEditor() {
           />
         </div>
 
-        {/* Chat panel — slide in from right */}
+        {/* Chat drawer — overlay on the right, resizable */}
         {showChat && id && (
-          <div style={{
-            width: 380, flexShrink: 0, borderLeft: "1px solid var(--border)", overflow: "hidden",
-            animation: "slideInRight 0.22s cubic-bezier(0.22, 1, 0.36, 1) both",
-          }}>
-            <ChatPanel docId={id} onClose={() => setShowChat(false)} />
+          <div
+            ref={chatContainerRef}
+            onAnimationEnd={() => { chatHasAnimated.current = true; }}
+            style={{
+              position: "absolute",
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: chatWidth,
+              zIndex: 20,
+              borderLeft: "1px solid var(--border-strong)",
+              boxShadow: "-8px 0 30px rgba(0, 0, 0, 0.35), -2px 0 8px rgba(0, 0, 0, 0.2)",
+              animation: chatHasAnimated.current ? undefined : "slideInRight 0.28s cubic-bezier(0.22, 1, 0.36, 1) both",
+              overflow: "hidden",
+              display: "flex",
+            }}
+          >
+            {/* Drag handle */}
+            <div
+              onMouseDown={(e) => { e.preventDefault(); setIsChatDragging(true); }}
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 5,
+                cursor: "col-resize",
+                zIndex: 1,
+                background: isChatDragging ? "var(--accent)" : "transparent",
+                transition: "background 0.15s",
+              }}
+              onMouseEnter={(e) => { if (!isChatDragging) e.currentTarget.style.background = "var(--accent-subtle)"; }}
+              onMouseLeave={(e) => { if (!isChatDragging) e.currentTarget.style.background = "transparent"; }}
+            />
+            <div style={{ flex: 1, overflow: "hidden" }}>
+              <ChatPanel docId={id} onClose={() => { chatHasAnimated.current = false; setShowChat(false); }} />
+            </div>
           </div>
         )}
       </div>

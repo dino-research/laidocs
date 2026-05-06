@@ -70,15 +70,28 @@ function WarpNumberInput({ label, value, onChange, placeholder }: {
 // ── Test result ───────────────────────────────────────────────────
 function TestResultBadge({ result }: { result: TestResult | null }) {
   if (!result) return null;
+  const isSuccess = result.type === "success";
   return (
     <div style={{
-      marginTop: 12, padding: "10px 14px", borderRadius: 8, fontSize: 12,
-      color: result.type === "success" ? "var(--success)" : "var(--error)",
-      background: result.type === "success" ? "var(--success-bg)" : "var(--error-bg)",
-      border: `1px solid ${result.type === "success" ? "rgba(122,171,122,0.2)" : "rgba(192,112,112,0.2)"}`,
-      lineHeight: 1.5, animation: "fadeIn 0.18s ease-out",
+      marginTop: 14, padding: "11px 16px", borderRadius: 10, fontSize: 12,
+      color: isSuccess ? "var(--success)" : "var(--error)",
+      background: isSuccess ? "var(--success-bg)" : "var(--error-bg)",
+      border: `1px solid ${isSuccess ? "rgba(52,211,153,0.15)" : "rgba(248,113,113,0.15)"}`,
+      lineHeight: 1.55, animation: "fadeIn 0.18s ease-out",
+      display: "flex", alignItems: "flex-start", gap: 8,
     }}>
-      {result.message}
+      <span style={{ flexShrink: 0, marginTop: 1 }}>
+        {isSuccess ? (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        ) : (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+        )}
+      </span>
+      <span>{result.message}</span>
     </div>
   );
 }
@@ -103,12 +116,13 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
     <label style={{ position: "relative", display: "inline-flex", cursor: "pointer", alignItems: "center", gap: 10 }}>
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ position: "absolute", opacity: 0, width: 0, height: 0 }} />
       <div className="warp-toggle-track" style={{
-        background: checked ? "var(--btn-bg)" : "var(--surface-alt)",
-        border: `1px solid ${checked ? "var(--border-strong)" : "var(--border)"}`,
+        background: checked ? "var(--accent)" : "var(--surface-alt)",
+        border: `1px solid ${checked ? "var(--accent)" : "var(--border)"}`,
+        boxShadow: checked ? "0 0 10px var(--accent-subtle)" : "none",
       }}>
         <div className="warp-toggle-thumb" style={{
           left: checked ? 18 : 2,
-          background: checked ? "var(--text-secondary)" : "var(--text-faint)",
+          background: checked ? "#fff" : "var(--text-faint)",
         }} />
       </div>
     </label>
@@ -132,29 +146,37 @@ function ServiceSection({ title, icon, config, onChange, testResult, onTest, tes
 
   return (
     <div className="warp-card" style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
-        <span style={{ color: "var(--text-faint)" }}>{icon}</span>
-        <h2 style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: 0, letterSpacing: "-0.1px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+        <div style={{
+          width: 32, height: 32, borderRadius: 9,
+          background: "var(--accent-subtle)",
+          border: "1px solid var(--border-glow)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "var(--accent-text)",
+        }}>
+          {icon}
+        </div>
+        <h2 style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)", margin: 0, letterSpacing: "-0.1px" }}>
           {title}
         </h2>
       </div>
       {children}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <WarpInput label="Base URL" value={config.base_url} onChange={(v) => onChange({ ...config, base_url: v })} placeholder="https://api.openai.com/v1" />
         <WarpInput label="API Key" value={config.api_key} onChange={(v) => onChange({ ...config, api_key: v })} placeholder="sk-..." type="password" />
         <WarpInput label="Model" value={config.model} onChange={(v) => onChange({ ...config, model: v })} placeholder="gpt-4o" />
       </div>
-      <div style={{ marginTop: 18 }}>
+      <div style={{ marginTop: 20 }}>
         <button
           type="button"
           disabled={testDisabled || testing}
           onClick={handleTest}
           className="btn-ghost"
-          style={{ fontSize: 12, padding: "6px 16px", opacity: testDisabled ? 0.4 : 1, cursor: testDisabled ? "not-allowed" : "pointer" }}
+          style={{ fontSize: 12, padding: "7px 18px", opacity: testDisabled ? 0.4 : 1, cursor: testDisabled ? "not-allowed" : "pointer" }}
         >
           {testing ? (
             <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <span className="spin" style={{ display: "inline-block", width: 11, height: 11, border: "1.5px solid var(--border)", borderTopColor: "var(--text-muted)", borderRadius: "50%" }} />
+              <span className="spin" style={{ display: "inline-block", width: 11, height: 11, border: "1.5px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%" }} />
               Testing…
             </span>
           ) : testLabel}
@@ -248,7 +270,7 @@ export default function Settings() {
   if (loading) return (
     <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center" }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-        <div style={{ width: 18, height: 18, border: "2px solid var(--border)", borderTopColor: "var(--text-muted)", borderRadius: "50%" }} className="spin" />
+        <div style={{ width: 18, height: 18, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%" }} className="spin" />
         <p style={{ color: "var(--text-faint)", fontSize: 13 }}>Loading settings…</p>
       </div>
     </div>
@@ -269,7 +291,7 @@ export default function Settings() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Page header */}
       <div style={{ padding: "28px 40px 0", borderBottom: "1px solid var(--border)", flexShrink: 0 }} className="fade-in">
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22 }}>
           <div>
             <h1 className="heading-display" style={{ margin: "0 0 6px" }}>Settings</h1>
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
@@ -281,7 +303,13 @@ export default function Settings() {
               <span style={{
                 fontSize: 12, color: isSaveError ? "var(--error)" : "var(--success)",
                 animation: "fadeIn 0.2s ease-out",
+                display: "inline-flex", alignItems: "center", gap: 5,
               }}>
+                {!isSaveError && (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                )}
                 {saveMsg}
               </span>
             )}
@@ -289,12 +317,12 @@ export default function Settings() {
               type="button"
               disabled={saving || !isDirty}
               onClick={save}
-              className="btn-primary"
-              style={{ opacity: (!isDirty && !saving) ? 0.4 : 1 }}
+              className="btn-accent"
+              style={{ opacity: (!isDirty && !saving) ? 0.4 : 1, padding: "8px 20px" }}
             >
               {saving ? (
                 <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                  <span className="spin" style={{ display: "inline-block", width: 12, height: 12, border: "1.5px solid rgba(255,255,255,0.2)", borderTopColor: "var(--text-secondary)", borderRadius: "50%" }} />
+                  <span className="spin" style={{ display: "inline-block", width: 12, height: 12, border: "1.5px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%" }} />
                   Saving…
                 </span>
               ) : "Save Settings"}
@@ -312,18 +340,18 @@ export default function Settings() {
                 onClick={() => setActiveTab(tab.id)}
                 style={{
                   display: "flex", alignItems: "center", gap: 7,
-                  padding: "9px 16px", fontSize: 13, fontWeight: isActive ? 500 : 400,
+                  padding: "10px 18px", fontSize: 13, fontWeight: isActive ? 500 : 400,
                   color: isActive ? "var(--text-primary)" : "var(--text-muted)",
                   background: "none", border: "none", cursor: "pointer",
-                  borderBottom: isActive ? "2px solid var(--text-secondary)" : "2px solid transparent",
+                  borderBottom: isActive ? "2px solid var(--accent)" : "2px solid transparent",
                   marginBottom: -1,
-                  transition: "color 0.15s, border-color 0.15s",
+                  transition: "all 0.15s",
                   fontFamily: "inherit",
                 }}
                 onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = "var(--text-secondary)"; }}
                 onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = "var(--text-muted)"; }}
               >
-                <span style={{ color: isActive ? "var(--text-muted)" : "var(--text-faint)" }}>{tab.icon}</span>
+                <span style={{ color: isActive ? "var(--accent-text)" : "var(--text-faint)" }}>{tab.icon}</span>
                 {tab.label}
               </button>
             );
@@ -351,12 +379,20 @@ export default function Settings() {
 
           {activeTab === "general" && (
             <div className="warp-card">
-              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
-                <span style={{ color: "var(--text-faint)" }}><IconGeneral /></span>
-                <h2 style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: 0 }}>General</h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 9,
+                  background: "var(--accent-subtle)",
+                  border: "1px solid var(--border-glow)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "var(--accent-text)",
+                }}>
+                  <IconGeneral />
+                </div>
+                <h2 style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)", margin: 0 }}>General</h2>
               </div>
               <WarpNumberInput label="Server Port" value={settings.port} onChange={(v) => setSettings({ ...settings, port: v })} placeholder="8008" />
-              <p style={{ marginTop: 8, fontSize: 12, color: "var(--text-faint)", lineHeight: 1.6 }}>
+              <p style={{ marginTop: 10, fontSize: 12, color: "var(--text-faint)", lineHeight: 1.6 }}>
                 Restart required after changing port.
               </p>
             </div>

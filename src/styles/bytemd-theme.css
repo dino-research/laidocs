@@ -1,5 +1,5 @@
-/* ── ByteMD Theme Override ──────────────────────────────────────────────────
- * Maps all ByteMD/CodeMirror/markdown-body selectors to the app's Warp design
+/* ── ByteMD Theme Override (v2 — Cinematic) ───────────────────────────────────
+ * Maps all ByteMD/CodeMirror/markdown-body selectors to the app's design
  * tokens defined in index.css. Import this file once at the app level so the
  * styles are available globally without an inline <style> block in JSX.
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -33,8 +33,8 @@
 /* All toolbar icons: clearly visible */
 .bytemd-toolbar-icon {
   color: var(--text-secondary) !important;
-  border-radius: 5px !important;
-  transition: background 0.15s, color 0.15s !important;
+  border-radius: 6px !important;
+  transition: all 0.15s ease !important;
   cursor: pointer !important;
 }
 .bytemd-toolbar-icon svg {
@@ -42,12 +42,12 @@
   stroke: currentColor !important;
 }
 .bytemd-toolbar-icon:hover {
-  background: var(--surface-alt) !important;
+  background: var(--accent-subtle) !important;
   color: var(--text-primary) !important;
 }
 .bytemd-toolbar-icon.bytemd-toolbar-icon-active {
-  background: var(--surface-alt) !important;
-  color: var(--text-primary) !important;
+  background: var(--accent-subtle) !important;
+  color: var(--accent-text) !important;
 }
 
 /* Write / Preview tab labels */
@@ -55,7 +55,7 @@
   color: var(--text-muted) !important;
   font-size: 12px !important;
   padding: 3px 8px !important;
-  border-radius: 4px !important;
+  border-radius: 5px !important;
   transition: color 0.15s !important;
   cursor: pointer !important;
 }
@@ -63,7 +63,7 @@
   color: var(--text-secondary) !important;
 }
 .bytemd-toolbar-tab-active {
-  color: var(--text-primary) !important;
+  color: var(--accent-text) !important;
   font-weight: 500 !important;
 }
 
@@ -124,10 +124,13 @@
   font-size: 12px !important;
 }
 .CodeMirror-cursor {
-  border-left-color: var(--text-primary) !important;
+  border-left-color: var(--accent) !important;
 }
 .CodeMirror-selected {
-  background: rgba(250, 249, 246, 0.10) !important;
+  background: var(--accent-muted) !important;
+}
+.CodeMirror-focused .CodeMirror-selected {
+  background: var(--accent-muted) !important;
 }
 
 /* ── CodeMirror Markdown Syntax Highlighting ──────────────────────────────── */
@@ -147,7 +150,7 @@
 .cm-em     { color: var(--text-secondary) !important; font-style: italic !important; }
 
 /* Links & URLs */
-.cm-link   { color: var(--text-secondary) !important; text-decoration: underline !important; }
+.cm-link   { color: var(--accent-text) !important; text-decoration: underline !important; }
 .cm-url    { color: var(--text-muted) !important; }
 
 /* Inline code & fenced code markers */
@@ -196,7 +199,7 @@
   color: var(--text-primary) !important;
 }
 .bytemd-toc-item-active {
-  color: var(--text-primary) !important;
+  color: var(--accent-text) !important;
   font-weight: 500 !important;
 }
 .bytemd-toc h2 {
@@ -209,19 +212,20 @@
 
 /* ── Dropdown / Popover menus ─────────────────────────────────────────────── */
 .bytemd-dropdown {
-  background: var(--surface-alt) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5) !important;
 }
 .bytemd-dropdown-item {
   color: var(--text-secondary) !important;
   font-size: 13px !important;
-  transition: background 0.12s !important;
+  transition: all 0.12s !important;
   cursor: pointer !important;
+  border-radius: 6px !important;
 }
 .bytemd-dropdown-item:hover {
-  background: var(--surface) !important;
+  background: var(--accent-subtle) !important;
   color: var(--text-primary) !important;
 }
 .bytemd-help-title {
@@ -251,8 +255,9 @@
   overflow-x: hidden !important;
 }
 .markdown-body h1 {
-  font-size: 22px !important;
-  font-weight: 500 !important;
+  font-family: 'DM Serif Display', Georgia, serif !important;
+  font-size: 24px !important;
+  font-weight: 400 !important;
   color: var(--text-primary) !important;
   margin-bottom: 14px !important;
   margin-top: 28px !important;
@@ -262,8 +267,9 @@
   letter-spacing: -0.3px !important;
 }
 .markdown-body h2 {
-  font-size: 18px !important;
-  font-weight: 500 !important;
+  font-family: 'DM Serif Display', Georgia, serif !important;
+  font-size: 20px !important;
+  font-weight: 400 !important;
   color: var(--text-primary) !important;
   margin-bottom: 10px !important;
   margin-top: 24px !important;
@@ -300,36 +306,36 @@
   margin-bottom: 14px !important;
 }
 .markdown-body a {
-  /* Uses --text-link from the global design tokens (index.css) */
-  color: var(--text-link) !important;
+  color: var(--accent-text) !important;
   text-decoration: underline !important;
   text-underline-offset: 3px !important;
+  transition: opacity 0.15s !important;
 }
 .markdown-body a:hover {
   opacity: 0.8 !important;
 }
 .markdown-body blockquote {
-  border-left: 3px solid var(--border-strong) !important;
+  border-left: 3px solid var(--accent) !important;
   color: var(--text-muted) !important;
   font-style: italic !important;
   background: var(--surface-alt) !important;
-  border-radius: 0 6px 6px 0 !important;
-  padding: 10px 16px !important;
+  border-radius: 0 8px 8px 0 !important;
+  padding: 12px 18px !important;
   margin: 16px 0 !important;
 }
 .markdown-body code {
   background: var(--surface-alt) !important;
   color: var(--text-secondary) !important;
   padding: 2px 6px !important;
-  border-radius: 4px !important;
+  border-radius: 5px !important;
   font-size: 12.5px !important;
   font-family: 'Geist Mono', 'Courier New', monospace !important;
   border: 1px solid var(--border) !important;
 }
 .markdown-body pre {
   background: var(--surface-alt) !important;
-  border-radius: 8px !important;
-  padding: 14px 18px !important;
+  border-radius: 10px !important;
+  padding: 16px 20px !important;
   margin-bottom: 16px !important;
   border: 1px solid var(--border) !important;
   overflow-x: auto !important;
@@ -351,27 +357,28 @@
   color: var(--text-primary) !important;
   font-weight: 600 !important;
   border-bottom: 2px solid var(--border-strong) !important;
-  padding: 8px 12px !important;
+  padding: 9px 14px !important;
   text-align: left !important;
   background: var(--surface-alt) !important;
+  font-size: 12px !important;
 }
 .markdown-body td {
   color: var(--text-secondary) !important;
   border-bottom: 1px solid var(--border) !important;
-  padding: 7px 12px !important;
+  padding: 8px 14px !important;
 }
 .markdown-body tr:hover td {
-  background: var(--surface-alt) !important;
+  background: var(--accent-subtle) !important;
 }
 .markdown-body img {
-  border-radius: 8px !important;
+  border-radius: 10px !important;
   border: 1px solid var(--border) !important;
   max-width: 100% !important;
 }
 .markdown-body hr {
   border: none !important;
   border-top: 1px solid var(--border) !important;
-  margin: 24px 0 !important;
+  margin: 28px 0 !important;
 }
 .markdown-body strong {
   color: var(--text-primary) !important;

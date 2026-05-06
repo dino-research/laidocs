@@ -41,12 +41,12 @@ function MessageBubble({ message }: { message: Message }) {
     }}>
       {/* Avatar */}
       <div style={{
-        flexShrink: 0, width: 26, height: 26, borderRadius: "50%",
+        flexShrink: 0, width: 24, height: 24, borderRadius: 7,
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 9, fontWeight: 600, letterSpacing: "0.5px",
-        background: isUser ? "var(--btn-bg)" : "var(--surface-alt)",
-        color: "var(--text-muted)",
-        border: "1px solid var(--border)",
+        fontSize: 8, fontWeight: 600, letterSpacing: "0.5px",
+        background: isUser ? "var(--btn-bg)" : "var(--accent-subtle)",
+        color: isUser ? "var(--text-muted)" : "var(--accent-text)",
+        border: `1px solid ${isUser ? "var(--border)" : "var(--border-glow)"}`,
         marginTop: 2,
       }}>
         {isUser ? "You" : "AI"}
@@ -54,11 +54,11 @@ function MessageBubble({ message }: { message: Message }) {
 
       {/* Bubble */}
       <div style={{
-        maxWidth: "82%",
+        maxWidth: "85%",
         borderRadius: isUser ? "12px 12px 3px 12px" : "12px 12px 12px 3px",
-        padding: "10px 14px",
-        fontSize: 13,
-        lineHeight: 1.65,
+        padding: "9px 13px",
+        fontSize: 12,
+        lineHeight: 1.6,
         background: isUser ? "var(--btn-bg)" : "var(--surface-alt)",
         color: isUser ? "var(--text-primary)" : "var(--text-secondary)",
         border: `1px solid ${isUser ? "var(--border-hover)" : "var(--border)"}`,
@@ -71,8 +71,8 @@ function MessageBubble({ message }: { message: Message }) {
             <span className="chat-cursor" />
           </div>
         ) : (
-          <div style={{ fontSize: 13 }}>
-            <MarkdownPreview content={message.content} />
+          <div style={{ fontSize: 12 }}>
+            <MarkdownPreview content={message.content} compact />
           </div>
         )}
       </div>
@@ -98,6 +98,15 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
   }, [messages]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Close drawer on Escape
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [onClose]);
 
   const sendMessage = useCallback(async () => {
     const question = input.trim();
@@ -136,11 +145,15 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
       {/* Header */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "10px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0,
+        padding: "11px 14px", borderBottom: "1px solid var(--border)", flexShrink: 0,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--success)" }} className="pulse" />
-          <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", letterSpacing: "0" }}>
+          <div style={{
+            width: 6, height: 6, borderRadius: "50%",
+            background: "var(--accent)",
+            boxShadow: "0 0 8px var(--accent-glow)",
+          }} className="pulse" />
+          <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-secondary)", letterSpacing: "0" }}>
             Chat with Document
           </span>
         </div>
@@ -159,17 +172,25 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "14px", display: "flex", flexDirection: "column", gap: 12 }}>
         {messages.length === 0 && (
           <div style={{
             display: "flex", flexDirection: "column", alignItems: "center",
             justifyContent: "center", height: "100%",
             textAlign: "center", padding: "32px 16px",
           }}>
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--text-faint)", opacity: 0.45, marginBottom: 14 }}>
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-            <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-muted)", margin: "0 0 6px" }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12,
+              background: "var(--accent-subtle)",
+              border: "1px solid var(--border-glow)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              marginBottom: 18,
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)", margin: "0 0 5px" }}>
               Ask anything about this document
             </p>
             <p style={{ fontSize: 11, color: "var(--text-faint)", margin: 0, lineHeight: 1.6 }}>
@@ -183,8 +204,8 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
 
         {error && (
           <div style={{
-            padding: "10px 14px", borderRadius: 8,
-            border: "1px solid rgba(192,112,112,0.25)",
+            padding: "10px 14px", borderRadius: 10,
+            border: "1px solid rgba(248,113,113,0.2)",
             background: "var(--error-bg)",
             fontSize: 12, color: "var(--error)",
           }}>
@@ -194,8 +215,8 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
       </div>
 
       {/* Input */}
-      <div style={{ padding: "10px 12px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+      <div style={{ padding: "10px 14px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
           <textarea
             ref={inputRef}
             id="chat-input"
@@ -206,31 +227,31 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
             rows={2}
             disabled={streaming}
             className="warp-input"
-            style={{ flex: 1, resize: "none", fontFamily: "inherit", fontSize: 13, borderRadius: 8 }}
+            style={{ flex: 1, resize: "none", fontFamily: "inherit", fontSize: 12, borderRadius: 8 }}
           />
           <button
             id="chat-send-btn"
             onClick={sendMessage}
             disabled={!input.trim() || streaming}
             style={{
-              flexShrink: 0, width: 34, height: 34,
-              borderRadius: "var(--radius-pill)",
-              background: "var(--btn-bg)", border: "1px solid var(--border-hover)",
-              color: "var(--text-secondary)", cursor: "pointer",
+              flexShrink: 0, width: 32, height: 32,
+              borderRadius: 8,
+              background: input.trim() && !streaming ? "var(--btn-accent)" : "var(--btn-bg)",
+              border: "1px solid transparent",
+              color: "#fff", cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
-              transition: "opacity 0.2s, background 0.15s",
-              opacity: (!input.trim() || streaming) ? 0.3 : 1,
+              transition: "all 0.2s cubic-bezier(0.22,1,0.36,1)",
+              opacity: (!input.trim() || streaming) ? 0.4 : 1,
+              boxShadow: input.trim() && !streaming ? "0 2px 10px var(--accent-glow)" : "none",
             }}
-            onMouseEnter={e => { if (input.trim() && !streaming) e.currentTarget.style.background = "var(--btn-bg-hover)"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "var(--btn-bg)"; }}
           >
             {streaming
-              ? <div style={{ width: 13, height: 13, border: "1.5px solid var(--border)", borderTopColor: "var(--text-muted)", borderRadius: "50%" }} className="spin" />
+              ? <div style={{ width: 13, height: 13, border: "1.5px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%" }} className="spin" />
               : <IconSend />
             }
           </button>
         </div>
-        <p style={{ fontSize: 9, color: "var(--text-faint)", margin: "6px 0 0", letterSpacing: "1px", textTransform: "uppercase" }}>
+        <p style={{ fontSize: 8, color: "var(--text-faint)", margin: "5px 0 0", letterSpacing: "0.8px", textTransform: "uppercase" }}>
           Grounded in this document only · Shift+Enter for new line
         </p>
       </div>

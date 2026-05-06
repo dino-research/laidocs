@@ -250,7 +250,7 @@ function TreeFile({
         fontWeight: isActive ? 500 : 400,
         fontFamily: "inherit",
         color: isActive ? "var(--text-primary)" : hovered ? "var(--text-secondary)" : "var(--text-muted)",
-        background: isActive ? "var(--surface-alt)" : hovered ? "var(--surface-hover)" : "transparent",
+        background: isActive ? "var(--accent-subtle)" : hovered ? "var(--surface-hover)" : "transparent",
         cursor: "pointer",
         textAlign: "left",
         transition: "color 0.12s, background 0.12s",
@@ -260,7 +260,7 @@ function TreeFile({
     >
       <IndentGuides depth={depth} />
       {isActive && <span className="nav-item-active-bar" />}
-      <span style={{ color: doc.source_type === "url" ? "var(--text-link)" : "var(--text-faint)", flexShrink: 0, display: "flex" }}>
+      <span style={{ color: doc.source_type === "url" ? "var(--accent-text)" : "var(--text-faint)", flexShrink: 0, display: "flex" }}>
         {doc.source_type === "url" ? <IconGlobe /> : <IconFile />}
       </span>
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -355,7 +355,7 @@ function TreeFolder({
           <span style={{ color: "var(--text-faint)", display: "flex" }}>
             <IconChevron expanded={expanded} />
           </span>
-          <span style={{ color: isUnsorted ? "var(--accent, var(--text-faint))" : "var(--text-faint)", display: "flex", flexShrink: 0 }}>
+          <span style={{ color: isUnsorted ? "var(--accent-text)" : "var(--text-faint)", display: "flex", flexShrink: 0 }}>
             {isUnsorted ? <IconInbox /> : (expanded ? <IconFolderOpen /> : <IconFolderClosed />)}
           </span>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
@@ -512,26 +512,18 @@ export default function FileTree({ tree, activeDocId, onFileClick, activeFolder,
     <>
       {contextMenu && (
         <div
+          className="context-menu"
           style={{
             position: "fixed",
             left: contextMenu.x,
             top: contextMenu.y,
-            background: "var(--surface-alt)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
             zIndex: 1000,
-            minWidth: 120,
-            padding: 4,
-            display: "flex",
-            flexDirection: "column",
           }}
           onClick={(e) => e.stopPropagation()}
         >
           {contextMenu.target.type === 'folder' && onUploadToFolder && (
             <button
-              className="btn-ghost"
-              style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4 }}
+              className="context-menu-item"
               onClick={(e) => {
                 e.preventDefault();
                 onUploadToFolder(contextMenu.target.path);
@@ -543,8 +535,7 @@ export default function FileTree({ tree, activeDocId, onFileClick, activeFolder,
           )}
           {contextMenu.target.type === 'folder' && onCrawlToFolder && (
             <button
-              className="btn-ghost"
-              style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4 }}
+              className="context-menu-item"
               onClick={(e) => {
                 e.preventDefault();
                 onCrawlToFolder(contextMenu.target.path);
@@ -555,13 +546,12 @@ export default function FileTree({ tree, activeDocId, onFileClick, activeFolder,
             </button>
           )}
           {contextMenu.target.type === 'folder' && (onUploadToFolder || onCrawlToFolder) && (
-            <div style={{ height: 1, background: "var(--border)", margin: "4px 8px" }} />
+            <div className="context-menu-separator" />
           )}
           {contextMenu.target.path !== UNSORTED_FOLDER && (
             <>
           <button
-            className="btn-ghost"
-            style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4 }}
+            className="context-menu-item"
             onClick={(e) => {
               e.preventDefault();
               setRenameTarget({ id: contextMenu.target.id, type: contextMenu.target.type });
@@ -571,8 +561,7 @@ export default function FileTree({ tree, activeDocId, onFileClick, activeFolder,
             Rename
           </button>
           <button
-            className="btn-ghost"
-            style={{ textAlign: "left", padding: "6px 12px", fontSize: 13, borderRadius: 4, color: "var(--error)" }}
+            className="context-menu-item context-menu-item-danger"
             onClick={(e) => {
               e.preventDefault();
               setDeleteTarget(contextMenu.target);

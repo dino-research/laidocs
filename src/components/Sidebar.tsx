@@ -70,24 +70,27 @@ function NavItem({
   onClick?: () => void;
   children: React.ReactNode;
 }) {
+  const [hovered, setHovered] = useState(false);
   return (
     <button
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         position: "relative",
         display: "flex",
         alignItems: "center",
         gap: 9,
         width: "100%",
-        padding: "7px 12px 7px 14px",
-        borderRadius: 7,
+        padding: "8px 12px 8px 14px",
+        borderRadius: 8,
         fontSize: 13.5,
         fontWeight: active ? 500 : 400,
-        color: active ? "var(--text-primary)" : "var(--text-muted)",
-        background: active ? "var(--surface-alt)" : "transparent",
+        color: active ? "var(--text-primary)" : hovered ? "var(--text-secondary)" : "var(--text-muted)",
+        background: active ? "var(--accent-subtle)" : hovered ? "var(--surface-hover)" : "transparent",
         border: "none",
         cursor: "pointer",
-        transition: "color 0.15s ease, background 0.15s ease",
+        transition: "all 0.15s ease",
         textDecoration: "none",
         textAlign: "left",
       }}
@@ -129,7 +132,7 @@ function ReloadButton() {
         background: "transparent",
         color: "var(--text-faint)",
         cursor: "pointer",
-        transition: "color 0.15s, background 0.15s",
+        transition: "all 0.15s ease",
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.color = "var(--text-muted)";
@@ -163,9 +166,11 @@ function PendingUploadItem({ upload }: { upload: PendingUpload }) {
   const info = STAGE_LABELS[upload.stage] ?? { label: upload.stage, done: false };
   return (
     <div style={{
-      padding: "6px 12px 6px 14px",
-      borderRadius: 7,
-      opacity: 0.9,
+      padding: "7px 12px 7px 14px",
+      borderRadius: 8,
+      background: info.isError ? "var(--error-bg)" : info.done ? "var(--success-bg)" : "var(--surface-alt)",
+      border: `1px solid ${info.isError ? "rgba(248,113,113,0.15)" : info.done ? "rgba(52,211,153,0.1)" : "var(--border)"}`,
+      transition: "all 0.2s ease",
     }}>
       <div style={{
         fontSize: 13,
@@ -173,7 +178,7 @@ function PendingUploadItem({ upload }: { upload: PendingUpload }) {
         overflow: "hidden",
         textOverflow: "ellipsis",
         whiteSpace: "nowrap",
-        marginBottom: 3,
+        marginBottom: 4,
       }}>
         {upload.docTitle || upload.filename}
       </div>
@@ -193,14 +198,22 @@ function PendingUploadItem({ upload }: { upload: PendingUpload }) {
               width: 9,
               height: 9,
               border: "1.5px solid var(--border)",
-              borderTopColor: "var(--text-muted)",
+              borderTopColor: "var(--accent)",
               borderRadius: "50%",
               flexShrink: 0,
             }}
           />
         )}
-        {info.isError && <span style={{ fontSize: 10 }}>✗</span>}
-        {info.done && !info.isError && <span style={{ fontSize: 10 }}>✓</span>}
+        {info.isError && (
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        )}
+        {info.done && !info.isError && (
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        )}
         {upload.error || info.label}
       </div>
     </div>
@@ -338,28 +351,34 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
       borderRight: "1px solid var(--border)",
     }}>
       {/* Brand */}
-      <div style={{ padding: "18px 16px 14px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{
+        padding: "16px 14px 14px",
+        borderBottom: "1px solid var(--border)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}>
         <button
           onClick={() => { setActiveFolder(null); navigate("/"); }}
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left", display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}
         >
           <div style={{
-            width: 28, height: 28, borderRadius: 8,
-            background: "var(--surface-alt)",
-            border: "1px solid var(--border-strong)",
+            width: 30, height: 30, borderRadius: 9,
+            background: "linear-gradient(135deg, var(--accent-subtle), var(--surface-alt))",
+            border: "1px solid var(--border-glow)",
             display: "flex", alignItems: "center", justifyContent: "center",
             flexShrink: 0,
           }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
               <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
             </svg>
           </div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", letterSpacing: "-0.2px", lineHeight: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", letterSpacing: "-0.3px", lineHeight: 1 }}>
               LAIDocs
             </div>
-            <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3, letterSpacing: "1.2px", textTransform: "uppercase" }}>
+            <div style={{ fontSize: 9, color: "var(--text-faint)", marginTop: 3, letterSpacing: "1.4px", textTransform: "uppercase" }}>
               Knowledge Base
             </div>
           </div>
@@ -368,7 +387,7 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
           onClick={onToggleCollapse}
           title="Collapse sidebar"
           className="btn-icon"
-          style={{ flexShrink: 0, width: 24, height: 24, marginLeft: 4 }}
+          style={{ flexShrink: 0, width: 26, height: 26, marginLeft: 4 }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6" />
@@ -386,11 +405,11 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
 
         {/* Pending uploads */}
         {pendingUploads.length > 0 && (
-          <div style={{ marginTop: 8, marginBottom: 4 }}>
+          <div style={{ marginTop: 10, marginBottom: 6 }}>
             <div style={{ padding: "0 6px 6px" }}>
-              <span className="label-upper">Processing</span>
+              <span className="label-upper" style={{ color: "var(--accent-text)", fontSize: 9 }}>Processing</span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {pendingUploads.map((upload) => (
                 <PendingUploadItem key={upload.clientId} upload={upload} />
               ))}
@@ -406,12 +425,17 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
             padding: "0 6px 8px",
           }}>
             <span className="label-upper">Explorer</span>
-            <div style={{ display: "flex", gap: 4 }}>
+            <div style={{ display: "flex", gap: 2 }}>
               <button
                 onClick={() => { setShowNewFile(!showNewFile); setNewFileName(""); setNewFileError(""); setShowNewFolder(false); }}
                 className="btn-icon"
                 title="New File"
-                style={{ width: 26, height: 26, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: showNewFile ? "var(--surface-alt)" : "transparent" }}
+                style={{
+                  width: 26, height: 26, borderRadius: 6,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: showNewFile ? "var(--accent-subtle)" : "transparent",
+                  color: showNewFile ? "var(--accent-text)" : undefined,
+                }}
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -424,7 +448,12 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
                 onClick={() => { setShowNewFolder(!showNewFolder); setNewFolderName(""); setNewFolderError(""); setShowNewFile(false); }}
                 className="btn-icon"
                 title="New Folder"
-                style={{ width: 26, height: 26, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", background: showNewFolder ? "var(--surface-alt)" : "transparent" }}
+                style={{
+                  width: 26, height: 26, borderRadius: 6,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: showNewFolder ? "var(--accent-subtle)" : "transparent",
+                  color: showNewFolder ? "var(--accent-text)" : undefined,
+                }}
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <line x1="12" y1="5" x2="12" y2="19"/>
@@ -456,12 +485,12 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
                   disabled={creatingFile}
                   style={{
                     display: "inline-flex", alignItems: "center", gap: 5,
-                    fontSize: 12, color: "var(--text-secondary)", background: "var(--surface-alt)",
-                    border: "1px solid var(--border)", borderRadius: 5, cursor: "pointer",
-                    padding: "4px 10px", transition: "border-color 0.15s", opacity: creatingFile ? 0.6 : 1,
+                    fontSize: 12, color: "var(--accent-text)", background: "var(--accent-subtle)",
+                    border: "1px solid var(--border-glow)", borderRadius: 6, cursor: "pointer",
+                    padding: "4px 10px", transition: "all 0.15s", opacity: creatingFile ? 0.6 : 1,
                   }}
                 >
-                  {creatingFile ? <span className="spin" style={{ display: "inline-block", width: 10, height: 10, border: "1.5px solid var(--border)", borderTopColor: "var(--text-muted)", borderRadius: "50%" }} /> : <IconCheck />}
+                  {creatingFile ? <span className="spin" style={{ display: "inline-block", width: 10, height: 10, border: "1.5px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%" }} /> : <IconCheck />}
                   Create
                 </button>
                 <button
@@ -498,12 +527,12 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
                   disabled={creating}
                   style={{
                     display: "inline-flex", alignItems: "center", gap: 5,
-                    fontSize: 12, color: "var(--text-secondary)", background: "var(--surface-alt)",
-                    border: "1px solid var(--border)", borderRadius: 5, cursor: "pointer",
-                    padding: "4px 10px", transition: "border-color 0.15s", opacity: creating ? 0.6 : 1,
+                    fontSize: 12, color: "var(--accent-text)", background: "var(--accent-subtle)",
+                    border: "1px solid var(--border-glow)", borderRadius: 6, cursor: "pointer",
+                    padding: "4px 10px", transition: "all 0.15s", opacity: creating ? 0.6 : 1,
                   }}
                 >
-                  {creating ? <span className="spin" style={{ display: "inline-block", width: 10, height: 10, border: "1.5px solid var(--border)", borderTopColor: "var(--text-muted)", borderRadius: "50%" }} /> : <IconCheck />}
+                  {creating ? <span className="spin" style={{ display: "inline-block", width: 10, height: 10, border: "1.5px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%" }} /> : <IconCheck />}
                   Create
                 </button>
                 <button
@@ -531,7 +560,13 @@ export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: Sid
       </nav>
 
       {/* Footer: Settings + Reload */}
-      <div style={{ padding: "8px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 4 }}>
+      <div style={{
+        padding: "8px",
+        borderTop: "1px solid var(--border)",
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+      }}>
         <div style={{ flex: 1 }}>
           <NavItem active={isSettingsPage} onClick={() => navigate("/settings")}>
             <IconSettings />
