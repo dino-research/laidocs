@@ -1,12 +1,13 @@
-# IDE File Tree — Task Tracker
+# PageIndex RAG Upgrade — Task Tracker
 
 | # | Task | Status |
 |---|------|--------|
-| 1 | Backend: tree endpoint + create-document API | done |
-| 2 | FileTree component | done |
-| 3 | Resizable sidebar (drag + collapse) | done |
-| 4 | Integrate FileTree into Sidebar | done |
-| 5 | WelcomePanel + route updates | done |
-| 6 | Download button in editor | done |
-| 7 | Cleanup and polish | done |
-| 8 | Code Review and Fixes | [x] |
+| 1 | Create Tree Index Service | done |
+| 2 | Rewrite RAG Pipeline | done |
+| 3 | Update Database Schema | done |
+| 4 | Simplify Config | done |
+| 5 | Update Documents API | done |
+| 6 | Simplify Settings API | done |
+| 7 | Delete Unused Backend Files | done |
+| 8 | Clean Frontend — Remove Search + Simplify Settings | done |
+| 9 | End-to-End Verification | in_progress |
