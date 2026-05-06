@@ -1,4 +1,4 @@
-"""Settings API — read/write config, test LLM & embedding connections."""
+"""Settings API — read/write config, test LLM connection."""
 
 from __future__ import annotations
 
@@ -17,15 +17,11 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 class _MaskedSettings(BaseModel):
     llm: dict[str, Any]
-    embedding: dict[str, Any]
-    reranker: dict[str, Any]
     port: int
 
 
 class _SettingsUpdate(BaseModel):
     llm: dict[str, Any] | None = None
-    embedding: dict[str, Any] | None = None
-    reranker: dict[str, Any] | None = None
     port: int | None = None
 
 
@@ -55,8 +51,6 @@ async def read_settings():
     s = get_settings()
     return _MaskedSettings(
         llm=_mask(s.llm),
-        embedding=_mask(s.embedding),
-        reranker=_mask(s.reranker),
         port=s.port,
     )
 
@@ -66,10 +60,6 @@ async def update_settings(body: _SettingsUpdate):
     s = get_settings()
     if body.llm is not None:
         s.llm = s.llm.model_copy(update=body.llm)
-    if body.embedding is not None:
-        s.embedding = s.embedding.model_copy(update=body.embedding)
-    if body.reranker is not None:
-        s.reranker = s.reranker.model_copy(update=body.reranker)
     if body.port is not None:
         s.port = body.port
     s.save_to_file()
@@ -78,8 +68,6 @@ async def update_settings(body: _SettingsUpdate):
     s2 = get_settings()
     return _MaskedSettings(
         llm=_mask(s2.llm),
-        embedding=_mask(s2.embedding),
-        reranker=_mask(s2.reranker),
         port=s2.port,
     )
 
@@ -102,23 +90,5 @@ async def test_llm(body: _TestRequest):
         )
         reply = resp.choices[0].message.content if resp.choices else ""
         return {"success": True, "response": reply}
-    except Exception as exc:
-        return {"success": False, "error": str(exc)}
-
-
-@router.post("/test-embedding")
-async def test_embedding(body: _TestRequest):
-    """Send a tiny embedding request to validate embedding credentials."""
-    s = get_settings()
-    base_url = body.base_url or s.embedding.base_url
-    api_key = body.api_key or s.embedding.api_key
-    model = body.model or s.embedding.model
-    if not all([base_url, api_key, model]):
-        raise HTTPException(status_code=400, detail="Embedding base_url, api_key, and model are required")
-    try:
-        client = OpenAI(base_url=base_url, api_key=api_key)
-        resp = client.embeddings.create(model=model, input=body.text)
-        dim = len(resp.data[0].embedding) if resp.data else 0
-        return {"success": True, "dimension": dim, "usage": resp.usage.model_dump() if resp.usage else None}
     except Exception as exc:
         return {"success": False, "error": str(exc)}
