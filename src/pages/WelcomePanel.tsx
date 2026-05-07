@@ -156,17 +156,17 @@ const IconDocConvert = () => (
   </svg>
 );
 
-const IconBrain = () => (
+const IconWeb = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z" />
-    <line x1="10" y1="22" x2="14" y2="22" />
-    <line x1="9" y1="14" x2="15" y2="14" />
+    <circle cx="12" cy="12" r="10" />
+    <line x1="2" y1="12" x2="22" y2="12" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
   </svg>
 );
 
 const IconMessageAI = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     <circle cx="9" cy="10" r="1" fill="currentColor" />
     <circle cx="15" cy="10" r="1" fill="currentColor" />
   </svg>
@@ -241,8 +241,8 @@ export default function WelcomePanel() {
           }}
         >
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
           </svg>
         </div>
 
@@ -328,27 +328,27 @@ export default function WelcomePanel() {
           <TechCard
             icon={<IconDocConvert />}
             label="Document Engine"
-            headline="Smart conversion with layout understanding"
-            description="Extracts text, tables, and images from complex documents while preserving their original structure."
-            techStack={["Docling", "Markdown", "OCR"]}
+            headline="Smart Document Conversion"
+            description="Automatically extract text, layouts, and tables from complex files like PDF, XLSX, DOCX, PPTX into clean Markdown."
+            techStack={["Docling"]}
             accentColor="#34d399"
             delay={260}
           />
           <TechCard
-            icon={<IconBrain />}
-            label="AI Engine"
-            headline="Semantic search with vector embeddings"
-            description="Understands meaning, not just keywords. Your documents are indexed as vectors for deep semantic retrieval."
-            techStack={["Gemini", "LlamaIndex", "LanceDB"]}
+            icon={<IconWeb />}
+            label="Web Engine"
+            headline="Intelligent Web Crawling"
+            description="Extract webpage content into readable Markdown, intelligently stripping away ads and unnecessary clutter."
+            techStack={["Crawl4AI"]}
             accentColor="#a5b4fc"
             delay={320}
           />
           <TechCard
             icon={<IconMessageAI />}
             label="Chat Engine"
-            headline="RAG-grounded answers with citations"
-            description="Every response is grounded in your documents using Retrieval-Augmented Generation — no hallucination."
-            techStack={["RAG", "Gemini 2.0 Flash", "Streaming"]}
+            headline="Agentic Chat with Documents"
+            description="Engage with a DeepAgents-powered assistant that strictly answers from context, remembers history, and manages sessions."
+            techStack={["DeepAgents", "Reasoning-based RAG"]}
             accentColor="#fbbf24"
             delay={380}
           />
