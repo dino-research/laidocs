@@ -76,6 +76,9 @@ async def chat_stream(body: ChatRequest):
     # Set tool context so retrieve_context knows which doc to search
     set_tool_context(body.doc_id, settings)
 
+    from ..core.telemetry import track_event_sync
+    track_event_sync("chat_sent", {"doc_id": body.doc_id})
+
     async def _event_generator():
         full_response = ""
         try:

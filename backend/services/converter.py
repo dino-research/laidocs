@@ -137,9 +137,14 @@ class DoclingConverter:
         ext = Path(file_path).suffix.lower()
         print(f"[converter] convert_file called: path={file_path}, ext={ext}")
         if ext == ".xlsx":
-            return self._convert_excel(file_path)
+            result = self._convert_excel(file_path)
+        else:
+            result = self._convert_with_docling(file_path, doc_id=doc_id, assets_dir=assets_dir)
 
-        return self._convert_with_docling(file_path, doc_id=doc_id, assets_dir=assets_dir)
+        from ..core.telemetry import track_event_sync
+        track_event_sync("document_indexed", {"ext": ext})
+
+        return result
 
     # ── Excel via MarkItDown ──────────────────────────────────────────────────
 

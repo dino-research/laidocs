@@ -62,6 +62,9 @@ async def lifespan(app: FastAPI):
     assets_path = ensure_assets_dir()
     app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
 
+    from backend.core.telemetry import track_event_sync
+    track_event_sync("app_launched")
+
     print("[sidecar] Server ready")
     yield
     # Shutdown (nothing to clean up yet)
