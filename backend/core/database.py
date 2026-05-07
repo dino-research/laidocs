@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS documents (
 # Migration for existing databases
 _MIGRATIONS = [
     "ALTER TABLE documents ADD COLUMN tree_index TEXT",
+    """CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    doc_id TEXT NOT NULL,
+    session_id INTEGER NOT NULL DEFAULT 1,
+    role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)""",
 ]
 
 
