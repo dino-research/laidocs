@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/dino-research/laidocs/raw/main/docs/assets/laidocs-hero.png" alt="LAIDocs" width="600">
+  <img src="docs/assets/laidocs-icon.png" alt="LAIDocs" width="120">
 </p>
 
 <h1 align="center">LAIDocs</h1>
