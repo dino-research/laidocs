@@ -108,14 +108,12 @@ from backend.api import (
     settings_router,
     documents_router,
     folders_router,
-    search_router,
     chat_router,
 )
 
 app.include_router(settings_router)
 app.include_router(documents_router)
 app.include_router(folders_router)
-app.include_router(search_router)
 app.include_router(chat_router)
 
 

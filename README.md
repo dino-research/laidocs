@@ -1,6 +1,6 @@
 # LAIDocs — Local AI-powered Document Manager
 
-> Smart document management system running 100% locally. Convert files & URLs to Markdown, organize in custom folders, and chat with documents using reasoning-based RAG (PageIndex).
+> Smart document management system running 100% locally. Convert files & URLs to Markdown, organize in custom folders, and chat with documents using a DeepAgents-powered assistant with SOUL (document-grounded only), conversation memory, and session management.
 
 ## Features
 
@@ -10,7 +10,11 @@
 - **Web Crawler**: URL → Markdown (via Crawl4AI + LLM-enhanced extraction)
 - **Markdown Editor**: Full-featured split editor/preview powered by ByteMD (GFM, TOC, syntax highlighting)
 - **Folder Tree**: Custom document organization
-- **Document Q&A**: Chat with any document using reasoning-based RAG (PageIndex tree index)
+- **Document Q&A**: Chat with any document via a DeepAgents assistant that answers ONLY from document context (SOUL constraint)
+- **Conversation Memory**: Agent remembers context within a session for follow-up questions
+- **Session Management**: Start fresh sessions per document — previous messages remain visible with dividers
+- **User Preference Learning**: Agent learns your preferences (language, detail level, format) during the session
+- **History Persistence**: All chat messages persist across app restarts in SQLite
 - **Upload Progress**: Real-time conversion stage tracking via SSE, displayed in the sidebar
 - **Fully Local**: Only connects to your configured LLM API — no data leaves your machine
 
@@ -21,11 +25,13 @@
 | Desktop Shell | Tauri v2 (Rust) |
 | Frontend | React 19 + TypeScript + Tailwind CSS |
 | Backend | Python FastAPI (sidecar) |
-| Doc Conversion | Docling ≥ 2.0 (replaces MarkItDown) |
+| Doc Conversion | Docling >= 2.0 |
 | Markdown Editor | ByteMD + @bytemd/plugin-gfm |
 | Web Crawling | Crawl4AI |
 | Document Index | PageIndex (hierarchical tree index) |
-| Database | SQLite (metadata + tree index JSON) |
+| Chat Agent | DeepAgents (SOUL, memory, tools) |
+| Agent Framework | LangChain + LangGraph |
+| Database | SQLite (metadata, tree index, chat history) |
 | LLM | OpenAI-compatible API (user-configured) |
 
 ## Architecture
@@ -37,30 +43,49 @@
 │  │           React Frontend (WebView)            │  │
 │  │  - Document List / Folder Tree               │  │
 │  │  - ByteMD Editor / Preview                   │  │
-│  │  - Q&A Chat Interface                        │  │
+│  │  - Q&A Chat Interface (sessions + history)   │  │
 │  │  - Settings Page                             │  │
 │  └──────────────────┬────────────────────────────┘  │
 │                     │ HTTP (localhost:8008)           │
 │  ┌──────────────────▼────────────────────────────┐  │
 │  │          Python FastAPI Backend               │  │
 │  │  ┌──────────┐  ┌──────────┐  ┌────────────┐  │  │
-│  │  │  Docling │  │ Crawl4AI │  │ RAG Pipeline│  │  │
-│  │  │ + VLM OCR│  │ + LLM    │  │ (PageIndex) │  │  │
-│  │  └──────────┘  └──────────┘  └────────────┘  │  │
-│  │  ┌──────────┐  ┌───────────────────────────┐  │  │
-│  │  │ Tree     │  │  SQLite                   │  │  │
-│  │  │ Index    │  │  (metadata + tree JSON)   │  │  │
+│  │  │  Docling │  │ Crawl4AI │  │ DeepAgent  │  │  │
+│  │  │ + VLM OCR│  │ + LLM    │  │ (SOUL +    │  │  │
+│  │  └──────────┘  └──────────┘  │ Memory +   │  │  │
+│  │  ┌──────────┐                │ Sessions)  │  │  │
+│  │  │ Tree     │                └────────────┘  │  │
+│  │  │ Index    │                ┌────────────┐  │  │
+│  │  └──────────┘                │ LangGraph  │  │  │
+│  │  ┌──────────┐                │ + LangChain│  │  │
+│  │  │  SQLite  │                └────────────┘  │  │
+│  │  │ metadata,│  ┌───────────────────────────┐  │  │
+│  │  │ tree idx,│  │  Vault (filesystem)      │  │  │
+│  │  │ history  │  │  ~/laidocs/vault/        │  │  │
 │  │  └──────────┘  └───────────────────────────┘  │  │
-│  │  ┌────────────────────────────────────────┐  │  │
-│  │  │  Vault (filesystem)                    │  │  │
-│  │  │  ~/laidocs/vault/                      │  │  │
-│  │  │    <folder>/<doc>.md                   │  │  │
-│  │  │    <folder>/<doc>.md.meta.json         │  │  │
-│  │  │    assets/<doc_id>_N.png               │  │  │
-│  │  └────────────────────────────────────────┘  │  │
 │  └───────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────┘
 ```
+
+## Chat System
+
+The chat system uses a **DeepAgents**-powered assistant with a **SOUL** (System of Understanding and Learning):
+
+- **Document-grounded only**: Every answer must come from the document — the agent says "I don't see this in the document" rather than guessing
+- **Tree Reasoning retrieval**: Uses a `retrieve_context` tool that selects relevant sections from the PageIndex tree via LLM node selection
+- **Conversation memory**: Within a session, the agent remembers previous questions and answers via LangGraph's MemorySaver checkpointer
+- **Session management**: Start fresh sessions per document (new button in chat header) — previous messages remain visible with "New Session" dividers
+- **User preference learning**: The agent learns preferences (language, detail level, format) during the session (in-memory) initialized from `~/.laidocs/memories/preferences.md`
+- **History persistence**: All messages across all sessions are stored in a `chat_messages` SQLite table and loaded on app reopen
+
+### Chat API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/chat/stream` | POST | Stream answer via SSE (tokens) |
+| `/api/chat/history/{doc_id}` | GET | Load all messages across sessions |
+| `/api/chat/new-session/{doc_id}` | POST | Start a fresh session |
+| `/api/chat/history/{doc_id}` | DELETE | Clear all history |
 
 ## Document Conversion Pipeline
 
@@ -102,7 +127,7 @@ pnpm tauri dev
 On first launch, configure in the Settings page:
 
 1. **LLM Endpoint**: OpenAI-compatible API URL + API Key + Model name
-   - Used for: web crawl extraction, document Q&A, OCR noise cleanup, PDF image descriptions, tree index summary generation
+   - Used for: web crawl extraction, document Q&A (agent), OCR noise cleanup, PDF image descriptions, tree index summary generation
 
 > All LLM features degrade gracefully — the app works fully offline without any LLM configured. Docling-based conversion and the editor always work. The Q&A feature and tree index require an LLM.
 
@@ -110,13 +135,13 @@ On first launch, configure in the Settings page:
 
 | Format | Conversion | Image Extraction |
 |--------|-----------|-----------------|
-| PDF | ✅ Full layout | ✅ (with optional VLM description) |
-| DOCX | ✅ | ✅ |
-| PPTX | ✅ | ✅ |
-| XLSX | ✅ (text/tables) | — |
-| HTML | ✅ (text) | — |
-| Markdown / TXT / CSV | ✅ (pass-through) | — |
-| URL | ✅ (via Crawl4AI) | — |
+| PDF | Full layout | (with optional VLM description) |
+| DOCX | | |
+| PPTX | | |
+| XLSX | (text/tables) | — |
+| HTML | (text) | — |
+| Markdown / TXT / CSV | (pass-through) | — |
+| URL | (via Crawl4AI) | — |
 
 ## Project Structure
 
@@ -126,7 +151,7 @@ laidocs/
 │   ├── api/                  # Route handlers
 │   │   ├── documents.py      # Upload (SSE progress), CRUD, crawl
 │   │   ├── folders.py
-│   │   ├── chat.py
+│   │   ├── chat.py           # Chat API (DeepAgent, sessions, history)
 │   │   └── settings.py
 │   ├── core/
 │   │   ├── config.py         # App settings (pydantic-settings)
@@ -134,11 +159,13 @@ laidocs/
 │   │   ├── exceptions.py     # Custom exception types
 │   │   └── vault.py          # Filesystem vault manager + ASSETS_DIR
 │   ├── services/
+│   │   ├── agent.py          # DeepAgent service (SOUL, memory, tree retrieval tool)
+│   │   ├── chat_history.py   # Chat message persistence (display layer)
 │   │   ├── converter.py      # DoclingConverter (Docling pipeline)
 │   │   ├── picture_serializer.py  # VaultPictureSerializer
 │   │   ├── crawler.py        # WebCrawler (Crawl4AI)
 │   │   ├── tree_index.py     # PageIndex tree builder (adapted)
-│   │   └── rag.py            # RAG pipeline (tree reasoning)
+│   │   ├── rag.py            # RAG helpers (reused by agent.py)
 │   ├── main.py               # FastAPI app + startup lifespan
 │   └── requirements.txt
 ├── src/                      # React + TypeScript frontend
@@ -146,7 +173,7 @@ laidocs/
 │   │   ├── Sidebar.tsx         # Folder tree + upload progress display
 │   │   ├── UploadDialog.tsx    # File upload dialog
 │   │   ├── MarkdownPreview.tsx # ByteMD markdown renderer
-│   │   ├── ChatPanel.tsx       # Document Q&A chat
+│   │   ├── ChatPanel.tsx       # Document Q&A chat (sessions, history, dividers)
 │   │   ├── CrawlDialog.tsx     # URL crawl dialog
 │   │   ├── Layout.tsx          # App shell layout
 │   │   └── TopBar.tsx          # Top navigation bar
@@ -154,7 +181,7 @@ laidocs/
 │   │   ├── FolderContext.tsx    # Folder tree state
 │   │   └── UploadContext.tsx    # Upload progress tracking (SSE)
 │   ├── lib/
-│   │   ├── sidecar.ts          # Backend API client
+│   │   ├── sidecar.ts          # Backend API client (chat history, sessions, SSE)
 │   │   └── api-upload.ts       # Upload + SSE progress consumer
 │   ├── pages/
 │   │   ├── DocumentEditor.tsx  # ByteMD editor + chat panel
@@ -170,20 +197,6 @@ laidocs/
 ├── reference-code/           # Reference implementations
 │   └── PageIndex/             # VectifyAI/PageIndex (tree RAG reference)
 └── src-tauri/                # Tauri Rust shell
-```
-
-## Documentation
-
-- [DESIGN.md](DESIGN.md) — Visual design system (Warp-inspired warm dark theme)
-- [docs/upload_flow_review.md](docs/upload_flow_review.md) — Upload flow architecture review (code-level analysis of the full upload pipeline)
-- [docs/page_index_code_review.md](docs/page_index_code_review.md) — PageIndex RAG migration review (vector-based → tree reasoning architecture)
-
-## Running Tests
-
-```bash
-cd /path/to/laidocs
-source backend/.venv/bin/activate
-pytest tests/ -v
 ```
 
 ## License

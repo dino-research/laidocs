@@ -1,6 +1,6 @@
 # LAIDocs
 
-Local AI-powered document manager: convert files/URLs to Markdown, organize in folders, and chat with documents using reasoning-based RAG (PageIndex). Fully local — only connects to your configured LLM API.
+Local AI-powered document manager: convert files/URLs to Markdown, organize in folders, and chat with documents using a DeepAgents-powered assistant with SOUL (document-grounded only), conversation memory, and session management. Fully local — only connects to your configured LLM API.
 
 ## Commands
 
@@ -35,12 +35,29 @@ Tauri v2 (Rust shell)
 │   ├── Docling — document → Markdown conversion
 │   ├── Crawl4AI — web crawling
 │   ├── PageIndex — hierarchical tree index (reasoning-based RAG)
-│   ├── SQLite — document metadata + tree index storage
-│   └── RAG pipeline — chat with documents (tree reasoning)
+│   ├── DeepAgents — chat agent with SOUL, memory, sessions
+│   ├── LangGraph + LangChain — agent framework + checkpointer
+│   └── SQLite — metadata, tree index, chat history
 └── Vault — filesystem storage at ~/.laidocs/vault/
 ```
 
 Frontend communicates with the sidecar via HTTP REST + SSE on `localhost:8008`. The Tauri shell plugin spawns the sidecar process.
+
+## Chat System
+
+The chat is powered by a **DeepAgents** agent (`backend/services/agent.py`) with:
+- **SOUL prompt** — document-grounded only, no fabrication, cite sections
+- **`retrieve_context` tool** — wraps PageIndex tree reasoning as a LangChain `@tool`
+- **Conversation memory** — LangGraph `MemorySaver` checkpointer (per-doc sessions)
+- **User preference learning** — in-memory store initialized from `~/.laidocs/memories/preferences.md`
+- **Display history** — separate `chat_messages` SQLite table (survives session reset)
+- **Session management** — new-session button resets agent context, all messages remain visible
+
+API endpoints in `backend/api/chat.py`:
+- `POST /api/chat/stream` — SSE stream with `session_id` support
+- `GET /api/chat/history/{doc_id}` — load all display messages
+- `POST /api/chat/new-session/{doc_id}` — start fresh session
+- `DELETE /api/chat/history/{doc_id}` — clear all history
 
 ## Key Paths
 
@@ -50,7 +67,8 @@ Frontend communicates with the sidecar via HTTP REST + SSE on `localhost:8008`. 
 | `~/.laidocs/vault/<folder>/<doc>.md` | Converted Markdown documents |
 | `~/.laidocs/vault/<folder>/<doc>.md.meta.json` | Document metadata sidecar |
 | `~/.laidocs/vault/assets/<doc_id>_N.png` | Extracted images |
-| `~/.laidocs/data/laidocs.db` | SQLite database (metadata + tree index JSON) |
+| `~/.laidocs/data/laidocs.db` | SQLite database (metadata, tree index, chat history) |
+| `~/.laidocs/memories/preferences.md` | Initial agent-learned user preferences |
 
 ## Project Structure
 
@@ -60,12 +78,12 @@ src/                    # React frontend
 ├── components/         # Sidebar, ChatPanel, UploadDialog, MarkdownPreview, etc.
 ├── context/            # FolderContext, UploadContext (React state)
 ├── hooks/              # useSidecar (Tauri invoke wrappers)
-└── lib/                # sidecar.ts (HTTP helpers, SSE, health polling)
+└── lib/                # sidecar.ts (HTTP helpers, SSE, health polling, chat history API)
 backend/                # Python FastAPI sidecar
 ├── api/                # REST routers: documents, folders, chat, settings
 ├── core/               # config, database (SQLite), exceptions, vault
 ├── models/             # Pydantic document model
-└── services/           # converter, crawler, tree_index, rag
+└── services/           # agent, chat_history, converter, crawler, tree_index, rag
 src-tauri/              # Tauri v2 (Rust)
 └── src/main.rs         # Sidecar spawn/shutdown, Tauri commands
 ```
@@ -80,6 +98,7 @@ src-tauri/              # Tauri v2 (Rust)
 
 - REST API at `http://localhost:8008` — see `src/lib/sidecar.ts` for `apiGet`/`apiPost`/`apiPut`/`apiDelete` helpers.
 - SSE streaming for chat (`POST /api/chat/stream`) and upload progress stages.
+- Chat history API: `getChatHistory`, `startNewSession`, `clearChatHistory` in `sidecar.ts`.
 - Assets served at `/assets/<filename>` via FastAPI `StaticFiles` mount.
 
 ## Gotchas
@@ -88,5 +107,7 @@ src-tauri/              # Tauri v2 (Rust)
 - **Dev mode Python**: If `backend/.venv/bin/python3` exists, Tauri uses it; otherwise falls back to system `python3`.
 - **Design system**: Warp-inspired warm dark theme — see `DESIGN.md` for colors, typography, and component patterns.
 - **Tauri dev CWD**: During `tauri dev`, Tauri sets CWD to the project root (where `package.json` lives). The Rust code resolves paths relative to this.
-- **Tree index build**: On document upload/crawl, the tree index is built asynchronously in a background task. The RAG pipeline falls back to raw document content if no tree index exists (e.g., document has no headings).
+- **Tree index build**: On document upload/crawl, the tree index is built asynchronously in a background task. The agent falls back to raw document content if no tree index exists (e.g., document has no headings).
+- **Agent concurrency**: `agent.py` uses `contextvars.ContextVar` (not module-level dict) for per-request tool context isolation — safe for concurrent requests.
+- **Agent streaming**: Uses LangGraph v2 streaming format (`version="v2"`) with dict-based chunks. Subagent/tool-call chunks are filtered out to emit only AI content tokens.
 - **PageIndex**: The tree index implementation is adapted from [VectifyAI/PageIndex](https://github.com/VectifyAI/PageIndex) — a vectorless, reasoning-based RAG system that builds a hierarchical tree from markdown headings with LLM-generated summaries per node.

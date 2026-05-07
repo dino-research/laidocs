@@ -1,8 +1,13 @@
 # Design: Upgrade Chat-with-Document to LangChain DeepAgents
 
 **Date**: 2026-05-07
-**Status**: Approved
+**Status**: Implemented (with adjustments)
 **Approach**: Full DeepAgents Harness (Phương án A)
+
+> **UPDATE (Post-Implementation):** Due to concurrency and event loop freeze issues discovered during implementation, the architecture was adjusted:
+> 1. `AsyncSqliteSaver` was replaced with `MemorySaver` (in-memory checkpointer) to avoid database lock issues.
+> 2. `StoreBackend` uses `InMemoryStore` instead of direct file I/O during agent execution.
+> 3. `contextvars.ContextVar` is used to ensure thread-safe context isolation for concurrent requests.
 
 ## Problem
 

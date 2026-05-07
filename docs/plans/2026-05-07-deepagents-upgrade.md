@@ -1,5 +1,10 @@
 # DeepAgents Upgrade Implementation Plan
 
+> **UPDATE (Post-Implementation):** Due to concurrency and event loop freeze issues discovered during implementation, the architecture was adjusted:
+> 1. `AsyncSqliteSaver` was replaced with `MemorySaver` (in-memory checkpointer) to avoid database lock issues.
+> 2. `StoreBackend` uses `InMemoryStore` instead of direct file I/O during agent execution.
+> 3. `contextvars.ContextVar` is used instead of a module-level dict to ensure thread-safe context isolation across concurrent async requests.
+
 > **For Antigravity:** REQUIRED WORKFLOW: Use `.agent/workflows/execute-plan.md` to execute this plan in single-flow mode.
 
 **Goal:** Replace the stateless RAG pipeline with a DeepAgents-powered agent that has SOUL (document-grounded only), conversation memory, session management, and long-term user preference learning.
