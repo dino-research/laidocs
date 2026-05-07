@@ -119,8 +119,13 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
     e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
   };
 
-  // Load chat history on mount
+  // Load chat history on mount or when docId changes
   useEffect(() => {
+    // Clear stale state immediately so previous doc's messages don't linger
+    setMessages([]);
+    setSessionId(1);
+    setError(null);
+
     getChatHistory(docId).then((history) => {
       if (history.length > 0) {
         const msgs: Message[] = history.map((h) => ({

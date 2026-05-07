@@ -134,7 +134,9 @@ class DoclingConverter:
         assets_dir.mkdir(parents=True, exist_ok=True)
 
         # Route Excel files to MarkItDown (handles merged cells correctly)
-        if Path(file_path).suffix.lower() == ".xlsx":
+        ext = Path(file_path).suffix.lower()
+        print(f"[converter] convert_file called: path={file_path}, ext={ext}")
+        if ext == ".xlsx":
             return self._convert_excel(file_path)
 
         return self._convert_with_docling(file_path, doc_id=doc_id, assets_dir=assets_dir)
@@ -148,12 +150,14 @@ class DoclingConverter:
         correctly — values appear once instead of being duplicated across all
         spanned columns.
         """
+        print(f"[converter] Using MarkItDown for Excel: {file_path}")
         mid = MarkItDown(enable_plugins=False)
         result = mid.convert(file_path)
         markdown = result.text_content or ""
         markdown = self._post_process_excel(markdown)
         markdown = self._refine(markdown)
         title = _extract_title(markdown, file_path)
+        print(f"[converter] Excel conversion done. Title={title}, length={len(markdown)}")
         return markdown, title
 
     @staticmethod

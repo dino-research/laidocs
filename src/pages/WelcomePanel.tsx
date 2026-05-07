@@ -330,7 +330,7 @@ export default function WelcomePanel() {
             label="Document Engine"
             headline="Smart Document Conversion"
             description="Automatically extract text, layouts, and tables from complex files like PDF, XLSX, DOCX, PPTX into clean Markdown."
-            techStack={["Docling"]}
+            techStack={["Docling", "Markitdown"]}
             accentColor="#34d399"
             delay={260}
           />

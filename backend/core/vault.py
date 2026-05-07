@@ -178,6 +178,30 @@ class VaultManager:
         if not filename.endswith(".md"):
             filename = filename + ".md"
 
+        # Deduplicate filename if a collision occurs
+        base_name = filename[:-3]
+        counter = 1
+        while True:
+            md_path = fp / filename
+            meta_path = fp / (filename + ".meta.json")
+            
+            # If neither file exists, the filename is safe to use
+            if not md_path.exists() and not meta_path.exists():
+                break
+                
+            # If meta exists, check if we are just overwriting our own document
+            if meta_path.exists():
+                try:
+                    existing_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    if existing_meta.get("doc_id") == doc_id:
+                        break  # Safe to overwrite our own file
+                except (json.JSONDecodeError, OSError):
+                    pass # Corrupt meta file, better to generate a new name
+            
+            # Collision detected, increment suffix and try again
+            filename = f"{base_name}-{counter}.md"
+            counter += 1
+
         meta = DocumentMeta(
             doc_id=doc_id,
             folder=folder,
