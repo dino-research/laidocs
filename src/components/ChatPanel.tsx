@@ -184,8 +184,12 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
         <div style={{ display: "flex", gap: 2 }}>
           <button
             onClick={async () => {
-              const newId = await startNewSession(docId);
-              setSessionId(newId);
+              try {
+                const newId = await startNewSession(docId);
+                setSessionId(newId);
+              } catch (e) {
+                setError(String(e));
+              }
             }}
             title="New session (fresh context)"
             className="btn-icon"
@@ -194,10 +198,14 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
           </button>
           <button
             onClick={async () => {
-              await clearChatHistory(docId);
-              setMessages([]);
-              setError(null);
-              setSessionId(1);
+              try {
+                await clearChatHistory(docId);
+                setMessages([]);
+                setError(null);
+                setSessionId(1);
+              } catch (e) {
+                setError(String(e));
+              }
             }}
             title="Clear conversation"
             className="btn-icon"

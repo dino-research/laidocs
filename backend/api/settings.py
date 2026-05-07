@@ -9,6 +9,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from ..core.config import get_settings, reload_settings
+from ..services.agent import reset_agent
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -65,6 +66,9 @@ async def update_settings(body: _SettingsUpdate):
     s.save_to_file()
     # Reload singleton
     reload_settings()
+    # Reset agent if LLM config changed so it rebuilds with new model
+    if body.llm is not None:
+        reset_agent()
     s2 = get_settings()
     return _MaskedSettings(
         llm=_mask(s2.llm),

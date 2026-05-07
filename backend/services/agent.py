@@ -9,6 +9,8 @@ Replaces the stateless RAGPipeline with an agent that:
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
 import json
 import logging
 from pathlib import Path
@@ -19,6 +21,7 @@ from deepagents.backends import StateBackend, CompositeBackend
 from deepagents.backends.store import StoreBackend
 from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.memory import InMemoryStore
 
@@ -116,11 +119,11 @@ def _build_context_from_nodes(nodes: list[dict]) -> str:
     return ctx.strip()
 
 
-def _select_nodes(tree_index: dict, question: str, settings: Settings) -> list[str]:
-    """Step 1: Ask LLM to select relevant node_ids from tree structure.
+def _select_nodes_sync(tree_index: dict, question: str, settings: Settings) -> list[str]:
+    """Ask LLM to select relevant node_ids from tree structure (sync, for thread pool).
 
     Uses a separate synchronous LLM call (not the agent) for node selection.
-    This keeps the retrieval logic fast and deterministic.
+    Called via asyncio.to_thread() to avoid blocking the event loop.
     """
     import re
     from openai import OpenAI
@@ -165,9 +168,11 @@ def _select_nodes(tree_index: dict, question: str, settings: Settings) -> list[s
 # Custom Tool — Tree Retrieval
 # ---------------------------------------------------------------------------
 
-# We store doc_id and settings in a module-level dict keyed by thread.
-# This is set before each agent invocation and read by the tool.
-_tool_context: dict[str, Any] = {}
+# Per-request context using contextvars for async-safe isolation.
+# Each asyncio task gets its own copy, preventing concurrent request collisions.
+_tool_context_var: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
+    "tool_ctx", default={}
+)
 
 
 @tool
@@ -181,8 +186,9 @@ def retrieve_context(question: str) -> str:
     Args:
         question: The specific question to search for in the document.
     """
-    doc_id = _tool_context.get("doc_id", "")
-    settings = _tool_context.get("settings")
+    ctx = _tool_context_var.get()
+    doc_id = ctx.get("doc_id", "")
+    settings = ctx.get("settings")
 
     if not doc_id or not settings:
         return "Error: Document context not configured."
@@ -190,7 +196,7 @@ def retrieve_context(question: str) -> str:
     tree_index = _get_tree_index(doc_id)
 
     if tree_index and tree_index.get('structure'):
-        node_ids = _select_nodes(tree_index, question, settings)
+        node_ids = _select_nodes_sync(tree_index, question, settings)
 
         if isinstance(node_ids, list) and len(node_ids) == 0:
             return "No relevant sections found in the document for this question."
@@ -222,7 +228,7 @@ def _ensure_memory_dir() -> None:
         )
 
 
-from langgraph.checkpoint.memory import MemorySaver
+
 
 # ---------------------------------------------------------------------------
 # Agent Factory
@@ -304,13 +310,13 @@ async def get_document_agent() -> CompiledStateGraph:
 
 
 def set_tool_context(doc_id: str, settings: Settings) -> None:
-    """Set the tool context for the current request.
+    """Set the tool context for the current async task.
 
     Must be called before invoking the agent so the retrieve_context
-    tool knows which document to search.
+    tool knows which document to search. Uses contextvars for safe
+    concurrent request isolation.
     """
-    _tool_context["doc_id"] = doc_id
-    _tool_context["settings"] = settings
+    _tool_context_var.set({"doc_id": doc_id, "settings": settings})
 
 
 def reset_agent() -> None:

@@ -182,6 +182,10 @@ async def new_chat_session(doc_id: str) -> SessionResponse:
 
 @router.delete("/history/{doc_id}")
 async def clear_chat_history(doc_id: str) -> dict:
-    """Clear all chat history for a document."""
+    """Clear all chat history for a document.
+
+    Also resets the agent so its in-memory conversation state is discarded.
+    """
     delete_messages(doc_id)
+    reset_agent()
     return {"status": "ok", "doc_id": doc_id}
