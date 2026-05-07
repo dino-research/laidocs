@@ -23,6 +23,8 @@ class Settings(BaseSettings):
 
     llm: LLMConfig = LLMConfig()
     port: int = 8008
+    telemetry_url: str = "http://localhost:8001/api/v1/track"
+    telemetry_enabled: bool = True
 
     model_config = {"arbitrary_types_allowed": True}
 
