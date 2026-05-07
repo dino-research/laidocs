@@ -38,5 +38,15 @@ Thumbs.db
 
 # Compiled sidecar binaries
 src-tauri/bin/api/main-*
-.agent/\n# TypeScript\n*.tsbuildinfo\n
+.agent/
+
+# TypeScript
+*.tsbuildinfo
+
+# Test data (large binary files)
+tescases/
+
+# Diff patches (generated)
+*.patch
+
 reference-code/
