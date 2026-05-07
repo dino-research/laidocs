@@ -376,9 +376,10 @@ export default function Settings() {
               <div style={{
                 marginBottom: 20, padding: "12px 16px", borderRadius: 8,
                 background: "var(--surface-alt)", border: "1px solid var(--border)",
-                fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5
+                fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5,
+                fontStyle: "italic"
               }}>
-                Server LLM đang được serve mặc định bởi bộ phận L.AI P, nếu muốn setup model riêng nhanh và mạnh hơn vui lòng setup ở đây.
+                The default LLM server is provided by the L.AI P department. To set up your own faster and more powerful model, please configure it here.
               </div>
             </ServiceSection>
           )}
