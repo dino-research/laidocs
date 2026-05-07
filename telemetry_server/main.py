@@ -60,9 +60,9 @@ async def dashboard(request: Request):
         recent_events = [dict(row) for row in recent_events]
         
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "users_count": users_count,
             "breakdown": breakdown,
             "recent_events": recent_events,

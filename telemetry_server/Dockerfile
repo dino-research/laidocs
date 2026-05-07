@@ -6,6 +6,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir fastapi uvicorn pydantic jinja2
 
 COPY main.py .
+COPY templates/ templates/
 
 EXPOSE 8001
 
