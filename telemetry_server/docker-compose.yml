@@ -1,0 +1,9 @@
+services:
+  telemetry:
+    build: .
+    container_name: laidocs-telemetry
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

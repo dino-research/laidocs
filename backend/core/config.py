@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from pydantic import BaseModel
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LAIDOCS_HOME = Path.home() / ".laidocs"
 CONFIG_PATH = LAIDOCS_HOME / "config.json"
@@ -19,14 +19,19 @@ class LLMConfig(BaseModel):
 
 
 class Settings(BaseSettings):
-    """LAIDocs application settings persisted to ~/.laidocs/config.json."""
+    """LAIDocs application settings persisted to ~/.laidocs/config.json and loaded from .env."""
 
     llm: LLMConfig = LLMConfig()
     port: int = 8008
     telemetry_url: str = "http://localhost:8001/api/v1/track"
     telemetry_enabled: bool = True
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = SettingsConfigDict(
+        arbitrary_types_allowed=True,
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
     def save_to_file(self, path: Path | None = None) -> None:
         target = path or CONFIG_PATH
