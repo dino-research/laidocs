@@ -1,0 +1,161 @@
+# Telemetry UI Implementation Plan
+
+> **For Antigravity:** REQUIRED WORKFLOW: Use `.agent/workflows/execute-plan.md` to execute this plan in single-flow mode.
+
+**Goal:** Build a lightweight, server-side rendered (Jinja2) dashboard for the telemetry server to visualize offline usage data.
+
+**Architecture:** A new `GET /` endpoint in FastAPI that queries the SQLite database for aggregated metrics and renders an HTML template using Jinja2 and vanilla CSS.
+
+**Tech Stack:** FastAPI, Jinja2, SQLite
+
+---
+
+### Task 1: Update Dependencies and Setup Templates
+
+**Files:**
+- Modify: `telemetry_server/Dockerfile`
+- Modify: `telemetry_server/main.py`
+- Create: `telemetry_server/templates/index.html`
+
+**Step 1: Add jinja2 to Dockerfile**
+
+```dockerfile
+# In telemetry_server/Dockerfile, modify the RUN command:
+RUN pip install --no-cache-dir fastapi uvicorn pydantic jinja2
+```
+
+**Step 2: Update main.py to serve Jinja2 templates**
+
+```python
+# In telemetry_server/main.py
+from fastapi.templating import Jinja2Templates
+from fastapi import Request
+
+# Below app = FastAPI(...)
+templates = Jinja2Templates(directory="templates")
+```
+
+### Task 2: Implement Data Aggregation Endpoint
+
+**Files:**
+- Modify: `telemetry_server/main.py`
+
+**Step 1: Add GET / route to fetch metrics**
+
+```python
+# In telemetry_server/main.py, add the following endpoint:
+@app.get("/")
+async def dashboard(request: Request):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        
+        # Total Unique Users
+        users_count = conn.execute("SELECT COUNT(DISTINCT machine_id) FROM events").fetchone()[0]
+        
+        # Event Breakdown
+        breakdown_rows = conn.execute("SELECT event_type, COUNT(*) as count FROM events GROUP BY event_type").fetchall()
+        breakdown = {row["event_type"]: row["count"] for row in breakdown_rows}
+        
+        # Recent 50 events
+        recent_events = conn.execute("SELECT * FROM events ORDER BY timestamp DESC LIMIT 50").fetchall()
+        recent_events = [dict(row) for row in recent_events]
+        
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "users_count": users_count,
+            "breakdown": breakdown,
+            "recent_events": recent_events,
+            "total_events": sum(breakdown.values())
+        }
+    )
+```
+
+### Task 3: Create the HTML Dashboard
+
+**Files:**
+- Create: `telemetry_server/templates/index.html`
+
+**Step 1: Write index.html with embedded CSS**
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAIDocs Telemetry Dashboard</title>
+    <style>
+        :root { --bg: #f8fafc; --text: #0f172a; --card: #ffffff; --border: #e2e8f0; --primary: #3b82f6; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 2rem; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { margin-top: 0; color: var(--primary); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .card { background: var(--card); padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border); }
+        .card h3 { margin: 0 0 0.5rem 0; font-size: 0.875rem; color: #64748b; text-transform: uppercase; }
+        .card .value { font-size: 2rem; font-weight: bold; margin: 0; }
+        table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 0.5rem; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        th, td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+        th { background: #f1f5f9; font-weight: 600; color: #475569; }
+        tr:last-child td { border-bottom: none; }
+        .badge { background: #e0f2fe; color: #0369a1; padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LAIDocs Telemetry Dashboard</h1>
+        
+        <div class="grid">
+            <div class="card">
+                <h3>Total Unique Users</h3>
+                <p class="value">{{ users_count }}</p>
+            </div>
+            <div class="card">
+                <h3>Total Events Tracked</h3>
+                <p class="value">{{ total_events }}</p>
+            </div>
+            <div class="card">
+                <h3>Chats Sent</h3>
+                <p class="value">{{ breakdown.get('chat_sent', 0) }}</p>
+            </div>
+            <div class="card">
+                <h3>Docs Indexed</h3>
+                <p class="value">{{ breakdown.get('document_indexed', 0) }}</p>
+            </div>
+        </div>
+
+        <h2>Recent Activity (Last 50)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Machine ID</th>
+                    <th>Event</th>
+                    <th>Metadata</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in recent_events %}
+                <tr>
+                    <td>{{ event.timestamp }}</td>
+                    <td style="font-family: monospace; font-size: 0.875rem;">{{ event.machine_id[:8] }}...</td>
+                    <td><span class="badge">{{ event.event_type }}</span></td>
+                    <td style="font-family: monospace; font-size: 0.875rem;">{{ event.metadata }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4">No events found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
+```
+
+**Step 2: Commit**
+
+```bash
+git add telemetry_server/
+git commit -m "feat: add jinja2 dashboard for telemetry server"
+```
