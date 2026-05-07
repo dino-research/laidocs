@@ -71,16 +71,15 @@ Your documents stay on your machine. The only external connection is to the LLM 
 
 ## Screenshots
 
-> 📸 Screenshots coming soon — we're preparing the final demo builds!
-
-<!-- 
-Add screenshots here once available:
 <p align="center">
   <img src="docs/assets/screenshot-welcome.png" width="800" alt="Welcome Panel">
-  <img src="docs/assets/screenshot-editor.png" width="800" alt="Document Editor">
-  <img src="docs/assets/screenshot-chat.png" width="800" alt="Chat Panel">
 </p>
--->
+<p align="center">
+  <img src="docs/assets/screenshot-editor.png" width="800" alt="Document Editor">
+</p>
+<p align="center">
+  <img src="docs/assets/screenshot-chat.png" width="800" alt="Chat with Documents">
+</p>
 
 ---
 
