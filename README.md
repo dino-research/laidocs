@@ -1,6 +1,6 @@
 # LAIDocs — Local AI-powered Document Manager
 
-> Smart document management system running 100% locally. Convert files & URLs to Markdown, organize in custom folders, semantic search, and Q&A with your documents.
+> Smart document management system running 100% locally. Convert files & URLs to Markdown, organize in custom folders, and chat with documents using reasoning-based RAG (PageIndex).
 
 ## Features
 
@@ -10,8 +10,7 @@
 - **Web Crawler**: URL → Markdown (via Crawl4AI + LLM-enhanced extraction)
 - **Markdown Editor**: Full-featured split editor/preview powered by ByteMD (GFM, TOC, syntax highlighting)
 - **Folder Tree**: Custom document organization
-- **Hybrid Search**: Semantic (embedding) + Full-text (BM25) search
-- **Document Q&A**: Chat with any document using RAG pipeline
+- **Document Q&A**: Chat with any document using reasoning-based RAG (PageIndex tree index)
 - **Upload Progress**: Real-time conversion stage tracking via SSE, displayed in the sidebar
 - **Fully Local**: Only connects to your configured LLM API — no data leaves your machine
 
@@ -25,10 +24,9 @@
 | Doc Conversion | Docling ≥ 2.0 (replaces MarkItDown) |
 | Markdown Editor | ByteMD + @bytemd/plugin-gfm |
 | Web Crawling | Crawl4AI |
-| Vector DB | LanceDB |
-| Full-text Search | SQLite FTS5 |
+| Document Index | PageIndex (hierarchical tree index) |
+| Database | SQLite (metadata + tree index JSON) |
 | LLM | OpenAI-compatible API (user-configured) |
-| Reranker | Optional (user-configured) |
 
 ## Architecture
 
@@ -39,7 +37,6 @@
 │  │           React Frontend (WebView)            │  │
 │  │  - Document List / Folder Tree               │  │
 │  │  - ByteMD Editor / Preview                   │  │
-│  │  - Search Interface                          │  │
 │  │  - Q&A Chat Interface                        │  │
 │  │  - Settings Page                             │  │
 │  └──────────────────┬────────────────────────────┘  │
@@ -48,12 +45,12 @@
 │  │          Python FastAPI Backend               │  │
 │  │  ┌──────────┐  ┌──────────┐  ┌────────────┐  │  │
 │  │  │  Docling │  │ Crawl4AI │  │ RAG Pipeline│  │  │
-│  │  │ + VLM OCR│  │ + LLM    │  │            │  │  │
+│  │  │ + VLM OCR│  │ + LLM    │  │ (PageIndex) │  │  │
 │  │  └──────────┘  └──────────┘  └────────────┘  │  │
-│  │  ┌──────────┐  ┌──────────┐  ┌────────────┐  │  │
-│  │  │ LanceDB  │  │  FTS5    │  │ Reranker   │  │  │
-│  │  │(vectors) │  │(SQLite)  │  │(optional)  │  │  │
-│  │  └──────────┘  └──────────┘  └────────────┘  │  │
+│  │  ┌──────────┐  ┌───────────────────────────┐  │  │
+│  │  │ Tree     │  │  SQLite                   │  │  │
+│  │  │ Index    │  │  (metadata + tree JSON)   │  │  │
+│  │  └──────────┘  └───────────────────────────┘  │  │
 │  │  ┌────────────────────────────────────────┐  │  │
 │  │  │  Vault (filesystem)                    │  │  │
 │  │  │  ~/laidocs/vault/                      │  │  │
@@ -74,7 +71,8 @@ When a file is uploaded:
 3. **MarkdownDocSerializer** serialises the document to Markdown with `![Image N](/assets/...)` references
 4. **LLM refinement** (optional) — sends the raw Markdown to your configured LLM to remove OCR noise while preserving all image tags and structure
 5. The resulting `.md` file and a `.meta.json` sidecar are written to `vault/<folder>/`
-6. Assets are served at `http://localhost:8008/assets/<filename>` via FastAPI's `StaticFiles` mount
+6. **Tree index** is built asynchronously in a background task — parses markdown headings into a hierarchical tree structure with LLM-generated summaries (adapted from [PageIndex](https://github.com/VectifyAI/PageIndex))
+7. Assets are served at `http://localhost:8008/assets/<filename>` via FastAPI's `StaticFiles` mount
 
 For PDFs, if a VLM model is configured, Docling can generate image descriptions (`> **Description:** ...`) embedded below each image in the Markdown.
 
@@ -104,13 +102,9 @@ pnpm tauri dev
 On first launch, configure in the Settings page:
 
 1. **LLM Endpoint**: OpenAI-compatible API URL + API Key + Model name
-   - Used for: web crawl extraction, document Q&A, OCR noise cleanup, PDF image descriptions
-2. **Embedding Model**: Endpoint + model (default: suggested multilingual model)
-   - Used for: semantic search indexing and RAG retrieval
-3. **Reranker** (optional): Endpoint + model
-   - Used for: re-ranking search results before RAG context assembly
+   - Used for: web crawl extraction, document Q&A, OCR noise cleanup, PDF image descriptions, tree index summary generation
 
-> All LLM features degrade gracefully — the app works fully offline without any LLM configured. Docling-based conversion, full-text search, and the editor always work.
+> All LLM features degrade gracefully — the app works fully offline without any LLM configured. Docling-based conversion and the editor always work. The Q&A feature and tree index require an LLM.
 
 ## Supported File Formats
 
@@ -130,23 +124,21 @@ On first launch, configure in the Settings page:
 laidocs/
 ├── backend/                  # Python FastAPI sidecar
 │   ├── api/                  # Route handlers
-│   │   ├── documents.py      # Upload (SSE progress), CRUD, crawl, reindex
+│   │   ├── documents.py      # Upload (SSE progress), CRUD, crawl
 │   │   ├── folders.py
-│   │   ├── search.py
 │   │   ├── chat.py
 │   │   └── settings.py
 │   ├── core/
 │   │   ├── config.py         # App settings (pydantic-settings)
-│   │   ├── database.py       # SQLite + LanceDB init
+│   │   ├── database.py       # SQLite init + migrations
 │   │   ├── exceptions.py     # Custom exception types
 │   │   └── vault.py          # Filesystem vault manager + ASSETS_DIR
 │   ├── services/
 │   │   ├── converter.py      # DoclingConverter (Docling pipeline)
 │   │   ├── picture_serializer.py  # VaultPictureSerializer
 │   │   ├── crawler.py        # WebCrawler (Crawl4AI)
-│   │   ├── indexer.py        # LanceDB vector indexer
-│   │   ├── rag.py            # RAG pipeline
-│   │   └── search.py         # Hybrid search (FTS5 + LanceDB)
+│   │   ├── tree_index.py     # PageIndex tree builder (adapted)
+│   │   └── rag.py            # RAG pipeline (tree reasoning)
 │   ├── main.py               # FastAPI app + startup lifespan
 │   └── requirements.txt
 ├── src/                      # React + TypeScript frontend
@@ -167,8 +159,7 @@ laidocs/
 │   ├── pages/
 │   │   ├── DocumentEditor.tsx  # ByteMD editor + chat panel
 │   │   ├── Documents.tsx       # Document list view
-│   │   ├── Search.tsx          # Hybrid search interface
-│   │   └── Settings.tsx        # LLM / embedding / reranker config
+│   │   └── Settings.tsx        # LLM config + general settings
 │   └── styles/
 │       └── bytemd-theme.css    # ByteMD dark theme
 ├── tests/                    # Python test suite
@@ -176,6 +167,8 @@ laidocs/
 │   ├── test_docling_converter.py
 │   ├── test_picture_serializer.py
 │   └── test_vault_assets.py
+├── reference-code/           # Reference implementations
+│   └── PageIndex/             # VectifyAI/PageIndex (tree RAG reference)
 └── src-tauri/                # Tauri Rust shell
 ```
 
@@ -183,6 +176,7 @@ laidocs/
 
 - [DESIGN.md](DESIGN.md) — Visual design system (Warp-inspired warm dark theme)
 - [docs/upload_flow_review.md](docs/upload_flow_review.md) — Upload flow architecture review (code-level analysis of the full upload pipeline)
+- [docs/page_index_code_review.md](docs/page_index_code_review.md) — PageIndex RAG migration review (vector-based → tree reasoning architecture)
 
 ## Running Tests
 

@@ -1,6 +1,6 @@
 # LAIDocs
 
-Local AI-powered document manager: convert files/URLs to Markdown, organize in folders, semantic search, and RAG Q&A. Fully local — only connects to your configured LLM API.
+Local AI-powered document manager: convert files/URLs to Markdown, organize in folders, and chat with documents using reasoning-based RAG (PageIndex). Fully local — only connects to your configured LLM API.
 
 ## Commands
 
@@ -34,9 +34,9 @@ Tauri v2 (Rust shell)
 ├── Python FastAPI sidecar (localhost:8008)
 │   ├── Docling — document → Markdown conversion
 │   ├── Crawl4AI — web crawling
-│   ├── LanceDB — vector search (embeddings)
-│   ├── SQLite FTS5 — full-text search (BM25)
-│   └── RAG pipeline — chat with documents
+│   ├── PageIndex — hierarchical tree index (reasoning-based RAG)
+│   ├── SQLite — document metadata + tree index storage
+│   └── RAG pipeline — chat with documents (tree reasoning)
 └── Vault — filesystem storage at ~/.laidocs/vault/
 ```
 
@@ -46,27 +46,26 @@ Frontend communicates with the sidecar via HTTP REST + SSE on `localhost:8008`. 
 
 | Path | Purpose |
 |------|---------|
-| `~/.laidocs/config.json` | Persisted settings (LLM, embedding, reranker config) |
+| `~/.laidocs/config.json` | Persisted settings (LLM config) |
 | `~/.laidocs/vault/<folder>/<doc>.md` | Converted Markdown documents |
 | `~/.laidocs/vault/<folder>/<doc>.md.meta.json` | Document metadata sidecar |
 | `~/.laidocs/vault/assets/<doc_id>_N.png` | Extracted images |
-| `~/.laidocs/data/vectors.lance/` | LanceDB vector store |
-| `~/.laidocs/data/laidocs.db` | SQLite database |
+| `~/.laidocs/data/laidocs.db` | SQLite database (metadata + tree index JSON) |
 
 ## Project Structure
 
 ```
 src/                    # React frontend
-├── pages/              # Documents, DocumentEditor, Search, Settings
+├── pages/              # Documents, DocumentEditor, Settings
 ├── components/         # Sidebar, ChatPanel, UploadDialog, MarkdownPreview, etc.
 ├── context/            # FolderContext, UploadContext (React state)
 ├── hooks/              # useSidecar (Tauri invoke wrappers)
 └── lib/                # sidecar.ts (HTTP helpers, SSE, health polling)
 backend/                # Python FastAPI sidecar
-├── api/                # REST routers: documents, folders, search, chat, settings
-├── core/               # config, database (SQLite + LanceDB), exceptions, vault
+├── api/                # REST routers: documents, folders, chat, settings
+├── core/               # config, database (SQLite), exceptions, vault
 ├── models/             # Pydantic document model
-└── services/           # converter, crawler, indexer, rag, search
+└── services/           # converter, crawler, tree_index, rag
 src-tauri/              # Tauri v2 (Rust)
 └── src/main.rs         # Sidecar spawn/shutdown, Tauri commands
 ```
@@ -85,8 +84,9 @@ src-tauri/              # Tauri v2 (Rust)
 
 ## Gotchas
 
-- **LanceDB schema migration**: On startup, the backend checks if the vector column uses `FixedSizeList`. If not, it auto-migrates and re-indexes all documents in a background thread.
 - **UTF-8 on Windows**: `main.py` forces `PYTHONUTF8=1` and reconfigures stdout/stderr to UTF-8 — needed for CJK content.
 - **Dev mode Python**: If `backend/.venv/bin/python3` exists, Tauri uses it; otherwise falls back to system `python3`.
 - **Design system**: Warp-inspired warm dark theme — see `DESIGN.md` for colors, typography, and component patterns.
 - **Tauri dev CWD**: During `tauri dev`, Tauri sets CWD to the project root (where `package.json` lives). The Rust code resolves paths relative to this.
+- **Tree index build**: On document upload/crawl, the tree index is built asynchronously in a background task. The RAG pipeline falls back to raw document content if no tree index exists (e.g., document has no headings).
+- **PageIndex**: The tree index implementation is adapted from [VectifyAI/PageIndex](https://github.com/VectifyAI/PageIndex) — a vectorless, reasoning-based RAG system that builds a hierarchical tree from markdown headings with LLM-generated summaries per node.
