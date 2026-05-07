@@ -3,7 +3,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install dependencies directly since there are only a few
-RUN pip install --no-cache-dir fastapi uvicorn pydantic
+RUN pip install --no-cache-dir fastapi uvicorn pydantic jinja2
 
 COPY main.py .
 
