@@ -58,7 +58,7 @@ def _build_docling_converter(settings) -> _DoclingConverter:
     description for PDFs (requires enable_remote_services=True per Docling
     docs). Otherwise the pipeline runs fully offline.
     """
-    llm_configured = bool(settings.llm.base_url and settings.llm.model)
+    llm_configured = bool(settings.active_llm.base_url and settings.active_llm.model)
 
     pdf_options = PdfPipelineOptions(
         generate_picture_images=True,
@@ -70,12 +70,12 @@ def _build_docling_converter(settings) -> _DoclingConverter:
     if llm_configured:
         # Append the OpenAI-compatible chat completions path to the base URL.
         # Strip trailing slash first to avoid double-slash issues.
-        base = settings.llm.base_url.rstrip("/")
+        base = settings.active_llm.base_url.rstrip("/")
         url = base + "/chat/completions"
         pdf_options.picture_description_options = PictureDescriptionApiOptions(
             url=url,
             params=dict(
-                model=settings.llm.model,
+                model=settings.active_llm.model,
                 max_completion_tokens=200,
             ),
             prompt="Describe this image in 2-3 concise sentences. Be precise.",

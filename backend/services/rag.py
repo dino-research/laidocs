@@ -97,8 +97,8 @@ def _select_nodes_sync(tree_index: dict, question: str, settings: Settings) -> l
     structure_no_text = remove_fields(structure, fields=['text'])
 
     client = OpenAI(
-        base_url=settings.llm.base_url or None,
-        api_key=settings.llm.api_key or "sk-placeholder",
+        base_url=settings.active_llm.base_url or None,
+        api_key=settings.active_llm.api_key or "sk-placeholder",
     )
 
     prompt = _NODE_SELECT_PROMPT.format(
@@ -107,7 +107,7 @@ def _select_nodes_sync(tree_index: dict, question: str, settings: Settings) -> l
     )
 
     resp = client.chat.completions.create(
-        model=settings.llm.model,
+        model=settings.active_llm.model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
         max_tokens=200,
@@ -139,7 +139,7 @@ class RAGPipeline:
 
     def _llm_client(self):
         from openai import OpenAI
-        cfg = self._settings.llm
+        cfg = self._settings.active_llm
         return OpenAI(
             base_url=cfg.base_url or None,
             api_key=cfg.api_key or "sk-placeholder",
@@ -180,7 +180,7 @@ class RAGPipeline:
         ]
         client = self._llm_client()
         resp = client.chat.completions.create(
-            model=self._settings.llm.model,
+            model=self._settings.active_llm.model,
             messages=messages,
         )
         return resp.choices[0].message.content or ""
@@ -198,7 +198,7 @@ class RAGPipeline:
         stream = await loop.run_in_executor(
             None,
             lambda: client.chat.completions.create(
-                model=self._settings.llm.model,
+                model=self._settings.active_llm.model,
                 messages=messages,
                 stream=True,
             ),

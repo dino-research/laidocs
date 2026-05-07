@@ -80,9 +80,9 @@ async def update_settings(body: _SettingsUpdate):
 async def test_llm(body: _TestRequest):
     """Send a tiny chat-completion request to validate LLM credentials."""
     s = get_settings()
-    base_url = body.base_url or s.llm.base_url
-    api_key = body.api_key or s.llm.api_key
-    model = body.model or s.llm.model
+    base_url = body.base_url or s.active_llm.base_url
+    api_key = body.api_key or s.active_llm.api_key
+    model = body.model or s.active_llm.model
     if not all([base_url, api_key, model]):
         raise HTTPException(status_code=400, detail="LLM base_url, api_key, and model are required")
     try:

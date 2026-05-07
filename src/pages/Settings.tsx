@@ -372,7 +372,15 @@ export default function Settings() {
               testResult={llmTest}
               onTest={testLlm}
               testLabel="Test connection"
-            />
+            >
+              <div style={{
+                marginBottom: 20, padding: "12px 16px", borderRadius: 8,
+                background: "var(--surface-alt)", border: "1px solid var(--border)",
+                fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5
+              }}>
+                Server LLM đang được serve mặc định bởi bộ phận L.AI P, nếu muốn setup model riêng nhanh và mạnh hơn vui lòng setup ở đây.
+              </div>
+            </ServiceSection>
           )}
 
 

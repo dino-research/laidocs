@@ -132,8 +132,8 @@ def _select_nodes_sync(tree_index: dict, question: str, settings: Settings) -> l
     structure_no_text = remove_fields(structure, fields=['text'])
 
     client = OpenAI(
-        base_url=settings.llm.base_url or None,
-        api_key=settings.llm.api_key or "sk-placeholder",
+        base_url=settings.active_llm.base_url or None,
+        api_key=settings.active_llm.api_key or "sk-placeholder",
     )
 
     prompt = (
@@ -147,7 +147,7 @@ def _select_nodes_sync(tree_index: dict, question: str, settings: Settings) -> l
     )
 
     resp = client.chat.completions.create(
-        model=settings.llm.model,
+        model=settings.active_llm.model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0,
         max_tokens=200,
@@ -257,10 +257,10 @@ def _get_store() -> InMemoryStore:
 def _create_model(settings: Settings):
     """Create a LangChain chat model from LAIDocs settings."""
     return init_chat_model(
-        model=settings.llm.model,
+        model=settings.active_llm.model,
         model_provider="openai",
-        base_url=settings.llm.base_url or None,
-        api_key=settings.llm.api_key or "sk-placeholder",
+        base_url=settings.active_llm.base_url or None,
+        api_key=settings.active_llm.api_key or "sk-placeholder",
         max_retries=3,
         timeout=120,
     )
