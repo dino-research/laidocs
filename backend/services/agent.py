@@ -19,7 +19,6 @@ from deepagents.backends import StateBackend, CompositeBackend
 from deepagents.backends.store import StoreBackend
 from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.store.memory import InMemoryStore
 
@@ -223,21 +222,21 @@ def _ensure_memory_dir() -> None:
         )
 
 
+from langgraph.checkpoint.memory import MemorySaver
+
 # ---------------------------------------------------------------------------
 # Agent Factory
 # ---------------------------------------------------------------------------
 
-_checkpointer: AsyncSqliteSaver | None = None
+_checkpointer: MemorySaver | None = None
 _store: InMemoryStore | None = None
 
 
-async def _get_checkpointer() -> AsyncSqliteSaver:
-    """Get or create the async SQLite checkpointer."""
+async def _get_checkpointer() -> MemorySaver:
+    """Get or create the MemorySaver checkpointer."""
     global _checkpointer
     if _checkpointer is None:
-        CHECKPOINT_DB.parent.mkdir(parents=True, exist_ok=True)
-        _checkpointer = AsyncSqliteSaver.from_conn_string(str(CHECKPOINT_DB))
-        await _checkpointer.setup()
+        _checkpointer = MemorySaver()
     return _checkpointer
 
 

@@ -131,7 +131,7 @@ async def chat_stream(body: ChatRequest):
                     continue
 
                 if (
-                    hasattr(message_obj, 'type') and message_obj.type == "ai"
+                    hasattr(message_obj, 'type') and message_obj.type in ("ai", "AIMessageChunk")
                     and hasattr(message_obj, 'content') and message_obj.content
                     and not getattr(message_obj, 'tool_call_chunks', None)
                 ):
