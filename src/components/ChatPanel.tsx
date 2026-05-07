@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { streamChat } from "../lib/sidecar";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { streamChat, getChatHistory, startNewSession, clearChatHistory } from "../lib/sidecar";
 import MarkdownPreview from "./MarkdownPreview";
 
 interface Message {
@@ -7,6 +7,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   streaming?: boolean;
+  sessionId?: number;
 }
 
 const IconTrash = () => (
@@ -28,6 +29,12 @@ const IconSend = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="22" y1="2" x2="11" y2="13"/>
     <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+  </svg>
+);
+
+const IconPlus = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
   </svg>
 );
 
@@ -90,6 +97,7 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<number>(1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -98,6 +106,22 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
   }, [messages]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Load chat history on mount
+  useEffect(() => {
+    getChatHistory(docId).then((history) => {
+      if (history.length > 0) {
+        const msgs: Message[] = history.map((h) => ({
+          id: String(h.id),
+          role: h.role,
+          content: h.content,
+          sessionId: h.session_id,
+        }));
+        setMessages(msgs);
+        setSessionId(Math.max(...history.map(h => h.session_id)));
+      }
+    }).catch(() => { /* ignore load errors */ });
+  }, [docId]);
 
   // Close drawer on Escape
   useEffect(() => {
@@ -114,8 +138,8 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
     setInput("");
     setError(null);
 
-    const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: question };
-    const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", content: "", streaming: true };
+    const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: question, sessionId };
+    const assistantMsg: Message = { id: crypto.randomUUID(), role: "assistant", content: "", streaming: true, sessionId };
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setStreaming(true);
 
@@ -124,7 +148,7 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
         setMessages((prev) =>
           prev.map((m) => m.id === assistantMsg.id ? { ...m, content: m.content + token } : m)
         );
-      });
+      }, sessionId);
     } catch (err) {
       setError(String(err));
       setMessages((prev) => prev.filter((m) => m.id !== assistantMsg.id));
@@ -134,7 +158,7 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
       );
       setStreaming(false);
     }
-  }, [docId, input, streaming]);
+  }, [docId, input, streaming, sessionId]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -159,7 +183,22 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
         </div>
         <div style={{ display: "flex", gap: 2 }}>
           <button
-            onClick={() => { setMessages([]); setError(null); }}
+            onClick={async () => {
+              const newId = await startNewSession(docId);
+              setSessionId(newId);
+            }}
+            title="New session (fresh context)"
+            className="btn-icon"
+          >
+            <IconPlus />
+          </button>
+          <button
+            onClick={async () => {
+              await clearChatHistory(docId);
+              setMessages([]);
+              setError(null);
+              setSessionId(1);
+            }}
             title="Clear conversation"
             className="btn-icon"
           >
@@ -200,7 +239,25 @@ export default function ChatPanel({ docId, onClose }: ChatPanelProps) {
           </div>
         )}
 
-        {messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)}
+        {messages.map((msg, idx) => {
+          const prevSession = idx > 0 ? messages[idx - 1].sessionId : msg.sessionId;
+          const showDivider = msg.sessionId !== prevSession;
+          return (
+            <React.Fragment key={msg.id}>
+              {showDivider && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "8px 0", color: "var(--text-faint)", fontSize: 10,
+                }}>
+                  <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                  <span>New Session</span>
+                  <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                </div>
+              )}
+              <MessageBubble message={msg} />
+            </React.Fragment>
+          );
+        })}
 
         {error && (
           <div style={{
