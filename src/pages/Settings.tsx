@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { apiGet, apiPost, apiPut } from "../lib/sidecar";
-import DataTab from "../components/DataTab";
+import DataTab, { type BackupStats, type PreviewResult } from "../components/DataTab";
 
 interface ServiceConfig { base_url: string; api_key: string; model: string; }
 interface SettingsData { llm: ServiceConfig; port: number; }

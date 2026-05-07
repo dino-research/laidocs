@@ -3,9 +3,9 @@ import { apiGet, apiPost } from "../lib/sidecar";
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-interface BackupStats { folders: number; documents: number; chat_messages: number; }
-interface BackupManifest { format_version: number; app_version: string; created_at: string; stats: BackupStats; }
-interface PreviewResult { valid: boolean; manifest?: BackupManifest; error?: string; }
+export interface BackupStats { folders: number; documents: number; chat_messages: number; }
+export interface BackupManifest { format_version: number; app_version: string; created_at: string; stats: BackupStats; }
+export interface PreviewResult { valid: boolean; manifest?: BackupManifest; error?: string; }
 
 // ── Helpers ───────────────────────────────────────────────────────
 
