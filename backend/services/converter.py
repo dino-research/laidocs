@@ -1,11 +1,10 @@
-"""Document conversion service — Docling pipeline with VaultPictureSerializer.
+"""Document conversion service — hybrid pipeline.
 
-Replaces the previous MarkItDown-based DocumentConverter. Supports:
-  - PDF  : full layout pipeline, image extraction, optional VLM description
-  - DOCX : image extraction, no VLM
-  - PPTX : image extraction, no VLM
-  - XLSX : text/table only
-  - HTML : text only
+- XLSX : MarkItDown (handles merged cells correctly, no duplication)
+- PDF  : Docling — full layout pipeline, image extraction, optional VLM
+- DOCX : Docling — image extraction, no VLM
+- PPTX : Docling — image extraction, no VLM
+- HTML : Docling — text only
 
 Configuration is read from app settings on construction. If no LLM base_url is
 configured, VLM description and post-processing refinement are both disabled
@@ -36,6 +35,7 @@ from docling_core.transforms.serializer.markdown import (
 )
 from docling_core.types.doc.document import ImageRefMode
 
+from markitdown import MarkItDown
 from openai import OpenAI
 
 from .picture_serializer import VaultPictureSerializer
@@ -133,6 +133,55 @@ class DoclingConverter:
         """
         assets_dir.mkdir(parents=True, exist_ok=True)
 
+        # Route Excel files to MarkItDown (handles merged cells correctly)
+        if Path(file_path).suffix.lower() == ".xlsx":
+            return self._convert_excel(file_path)
+
+        return self._convert_with_docling(file_path, doc_id=doc_id, assets_dir=assets_dir)
+
+    # ── Excel via MarkItDown ──────────────────────────────────────────────────
+
+    def _convert_excel(self, file_path: str) -> tuple[str, str]:
+        """Convert an Excel file using MarkItDown (Microsoft).
+
+        MarkItDown uses pandas + openpyxl internally and handles merged cells
+        correctly — values appear once instead of being duplicated across all
+        spanned columns.
+        """
+        mid = MarkItDown(enable_plugins=False)
+        result = mid.convert(file_path)
+        markdown = result.text_content or ""
+        markdown = self._post_process_excel(markdown)
+        markdown = self._refine(markdown)
+        title = _extract_title(markdown, file_path)
+        return markdown, title
+
+    @staticmethod
+    def _post_process_excel(md: str) -> str:
+        """Clean MarkItDown Excel output.
+
+        - Replace 'NaN' cell values with empty strings
+        - Remove 'Unnamed: N' column headers
+        - Collapse excessive blank lines
+        """
+        # Replace NaN values in table cells (| NaN | → |  |)
+        md = re.sub(r"(?<=\|)\s*NaN\s*(?=\|)", " ", md)
+        # Remove 'Unnamed: N' header labels
+        md = re.sub(r"(?<=\|)\s*Unnamed:\s*\d+\s*(?=\|)", " ", md)
+        # Collapse excessive blank lines
+        md = re.sub(r"\n{3,}", "\n\n", md)
+        return md
+
+    # ── Docling pipeline (PDF, DOCX, PPTX, HTML) ─────────────────────────────
+
+    def _convert_with_docling(
+        self,
+        file_path: str,
+        *,
+        doc_id: str,
+        assets_dir: Path,
+    ) -> tuple[str, str]:
+        """Convert a document using the Docling pipeline."""
         result = self._converter.convert(file_path)
         if result.status != ConversionStatus.SUCCESS:
             raise ValueError(
