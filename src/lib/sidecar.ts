@@ -53,11 +53,12 @@ export async function streamChat(
   docId: string,
   question: string,
   onChunk: (text: string) => void,
+  sessionId?: number,
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/api/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ doc_id: docId, question }),
+    body: JSON.stringify({ doc_id: docId, question, session_id: sessionId ?? null }),
   });
 
   if (!res.ok || !res.body) {
@@ -91,6 +92,30 @@ export async function streamChat(
   } finally {
     reader.releaseLock();
   }
+}
+
+// ── Chat history & session management ─────────────────────────────
+
+export interface ChatMessage {
+  id: number;
+  session_id: number;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+export async function getChatHistory(docId: string): Promise<ChatMessage[]> {
+  const res = await apiGet<{ messages: ChatMessage[] }>(`/api/chat/history/${docId}`);
+  return res.messages;
+}
+
+export async function startNewSession(docId: string): Promise<number> {
+  const res = await apiPost<{ session_id: number }>(`/api/chat/new-session/${docId}`, {});
+  return res.session_id;
+}
+
+export async function clearChatHistory(docId: string): Promise<void> {
+  await apiDelete(`/api/chat/history/${docId}`);
 }
 
 // ── Sidecar health check ──────────────────────────────────────────
