@@ -1,5 +1,8 @@
 # 🔍 Logic Review: Luồng Upload File — LAIDocs
 
+> [!NOTE]
+> **This review was written before the PageIndex migration.** The upload flow has changed: LanceDB vector indexing and FTS5 have been replaced by PageIndex tree index building. See [page_index_code_review.md](page_index_code_review.md) for the current architecture. The conversion pipeline (Docling → Markdown) described here remains accurate.
+
 ## Sơ đồ tổng quan
 
 ```mermaid
