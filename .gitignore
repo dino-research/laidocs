@@ -33,6 +33,10 @@ Thumbs.db
 # PyInstaller
 *.spec.bak
 
+# Git worktrees
+.worktrees/
+
 # Compiled sidecar binaries
 src-tauri/bin/api/main-*
 .agent/\n# TypeScript\n*.tsbuildinfo\n
+reference-code/

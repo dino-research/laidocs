@@ -1,5 +1,8 @@
 # LAIDocs Implementation Plan
 
+> [!WARNING]
+> **This plan is outdated.** The architecture has been migrated from LanceDB + FTS5 to PageIndex tree-based RAG. This document is kept for historical reference. See [page_index_code_review.md](../page_index_code_review.md) for the current architecture.
+
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
 **Goal:** Build a cross-platform local AI document manager with smart conversion, hybrid search, and RAG Q&A.

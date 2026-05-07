@@ -1,56 +1,274 @@
-"""Document conversion service — MarkItDown wrapper with optional LLM enhancement."""
+"""Document conversion service — hybrid pipeline.
+
+- XLSX : MarkItDown (handles merged cells correctly, no duplication)
+- PDF  : Docling — full layout pipeline, image extraction, optional VLM
+- DOCX : Docling — image extraction, no VLM
+- PPTX : Docling — image extraction, no VLM
+- HTML : Docling — text only
+
+Configuration is read from app settings on construction. If no LLM base_url is
+configured, VLM description and post-processing refinement are both disabled
+(graceful degradation).
+"""
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
+from docling.datamodel.base_models import ConversionStatus, InputFormat
+from docling.datamodel.pipeline_options import (
+    PdfPipelineOptions,
+    PictureDescriptionApiOptions,
+)
+from docling.document_converter import (
+    DocumentConverter as _DoclingConverter,
+    PdfFormatOption,
+    WordFormatOption,
+    PowerpointFormatOption,
+    ExcelFormatOption,
+    HTMLFormatOption,
+)
+from docling_core.transforms.serializer.markdown import (
+    MarkdownDocSerializer,
+    MarkdownParams,
+)
+from docling_core.types.doc.document import ImageRefMode
 
-class DocumentConverter:
-    """Convert uploaded files to Markdown using MarkItDown."""
+from markitdown import MarkItDown
+from openai import OpenAI
 
-    def __init__(self) -> None:
-        """Initialize MarkItDown converter, optionally with LLM client."""
-        from markitdown import MarkItDown
+from .picture_serializer import VaultPictureSerializer
 
-        from ..core.config import get_settings
 
-        settings = get_settings()
+# ── helpers ───────────────────────────────────────────────────────────────────
 
-        llm_client = None
-        llm_model = None
-        if settings.llm.base_url and settings.llm.api_key and settings.llm.model:
-            from openai import OpenAI
+def _extract_title(markdown: str, file_path: str) -> str:
+    """Extract title from first H1 heading; fall back to the filename stem."""
+    match = re.search(r"^#\s+(.+)$", markdown, re.MULTILINE)
+    if match:
+        return match.group(1).strip()
+    return Path(file_path).stem
 
-            llm_client = OpenAI(
-                base_url=settings.llm.base_url,
-                api_key=settings.llm.api_key,
-            )
-            llm_model = settings.llm.model
 
-        self.converter = MarkItDown(
-            llm_client=llm_client,
-            llm_model=llm_model,
-            enable_plugins=True,
+def _build_docling_converter(settings) -> _DoclingConverter:
+    """Build a DocumentConverter configured from app settings.
+
+    If an LLM base_url + model are present, enables remote VLM picture
+    description for PDFs (requires enable_remote_services=True per Docling
+    docs). Otherwise the pipeline runs fully offline.
+    """
+    llm_configured = bool(settings.active_llm.base_url and settings.active_llm.model)
+
+    pdf_options = PdfPipelineOptions(
+        generate_picture_images=True,
+        images_scale=2.0,
+        do_picture_description=llm_configured,
+        enable_remote_services=llm_configured,
+    )
+
+    if llm_configured:
+        # Append the OpenAI-compatible chat completions path to the base URL.
+        # Strip trailing slash first to avoid double-slash issues.
+        base = settings.active_llm.base_url.rstrip("/")
+        url = base + "/chat/completions"
+        pdf_options.picture_description_options = PictureDescriptionApiOptions(
+            url=url,
+            params=dict(
+                model=settings.active_llm.model,
+                max_completion_tokens=200,
+            ),
+            prompt="Describe this image in 2-3 concise sentences. Be precise.",
+            timeout=60,
         )
 
-    def convert_file(self, file_path: str) -> tuple[str, str]:
-        """Convert a file to Markdown.
+    return _DoclingConverter(
+        format_options={
+            InputFormat.PDF:  PdfFormatOption(pipeline_options=pdf_options),
+            InputFormat.DOCX: WordFormatOption(),
+            InputFormat.PPTX: PowerpointFormatOption(),
+            InputFormat.XLSX: ExcelFormatOption(),
+            InputFormat.HTML: HTMLFormatOption(),
+        }
+    )
+
+
+# ── main service ──────────────────────────────────────────────────────────────
+
+class DoclingConverter:
+    """Convert uploaded documents to Markdown using Docling.
+
+    Usage::
+
+        converter = DoclingConverter()
+        markdown, title = converter.convert_file(
+            "/path/to/doc.pdf",
+            doc_id="uuid-string",
+            assets_dir=Path("/vault/assets"),
+        )
+    """
+
+    def __init__(self) -> None:
+        from ..core.config import get_settings
+        self._settings = get_settings()
+        self._converter = _build_docling_converter(self._settings)
+
+    def convert_file(
+        self,
+        file_path: str,
+        *,
+        doc_id: str,
+        assets_dir: Path,
+    ) -> tuple[str, str]:
+        """Convert a document to Markdown, saving any images to *assets_dir*.
+
+        Args:
+            file_path:  Absolute path to the source file.
+            doc_id:     Unique document identifier (used as image filename prefix).
+            assets_dir: Directory under the vault where PNGs will be saved.
 
         Returns:
-            (markdown_content, title)
+            ``(markdown_content, title)`` where *title* is extracted from the
+            first H1 heading or falls back to the filename stem.
         """
-        result = self.converter.convert(file_path)
-        markdown = result.text_content
-        title = self._extract_title(markdown, file_path)
+        assets_dir.mkdir(parents=True, exist_ok=True)
+
+        # Route Excel files to MarkItDown (handles merged cells correctly)
+        ext = Path(file_path).suffix.lower()
+        print(f"[converter] convert_file called: path={file_path}, ext={ext}")
+        if ext == ".xlsx":
+            result = self._convert_excel(file_path)
+        else:
+            result = self._convert_with_docling(file_path, doc_id=doc_id, assets_dir=assets_dir)
+
+        from ..core.telemetry import track_event_sync
+        track_event_sync("document_indexed", {"ext": ext})
+
+        return result
+
+    # ── Excel via MarkItDown ──────────────────────────────────────────────────
+
+    def _convert_excel(self, file_path: str) -> tuple[str, str]:
+        """Convert an Excel file using MarkItDown (Microsoft).
+
+        MarkItDown uses pandas + openpyxl internally and handles merged cells
+        correctly — values appear once instead of being duplicated across all
+        spanned columns.
+        """
+        print(f"[converter] Using MarkItDown for Excel: {file_path}")
+        mid = MarkItDown(enable_plugins=False)
+        result = mid.convert(file_path)
+        markdown = result.text_content or ""
+        markdown = self._post_process_excel(markdown)
+        markdown = self._refine(markdown)
+        title = _extract_title(markdown, file_path)
+        print(f"[converter] Excel conversion done. Title={title}, length={len(markdown)}")
         return markdown, title
 
-    # ── helpers ──────────────────────────────────────────────────────
+    @staticmethod
+    def _post_process_excel(md: str) -> str:
+        """Clean MarkItDown Excel output.
+
+        - Replace 'NaN' cell values with empty strings
+        - Remove 'Unnamed: N' column headers
+        - Collapse excessive blank lines
+        """
+        # Replace NaN values in table cells (| NaN | → |  |)
+        md = re.sub(r"(?<=\|)\s*NaN\s*(?=\|)", " ", md)
+        # Remove 'Unnamed: N' header labels
+        md = re.sub(r"(?<=\|)\s*Unnamed:\s*\d+\s*(?=\|)", " ", md)
+        # Collapse excessive blank lines
+        md = re.sub(r"\n{3,}", "\n\n", md)
+        return md
+
+    # ── Docling pipeline (PDF, DOCX, PPTX, HTML) ─────────────────────────────
+
+    def _convert_with_docling(
+        self,
+        file_path: str,
+        *,
+        doc_id: str,
+        assets_dir: Path,
+    ) -> tuple[str, str]:
+        """Convert a document using the Docling pipeline."""
+        result = self._converter.convert(file_path)
+        if result.status != ConversionStatus.SUCCESS:
+            raise ValueError(
+                f"Docling conversion failed (status={result.status}) for: {file_path}"
+            )
+        doc = result.document
+
+        serializer = MarkdownDocSerializer(
+            doc=doc,
+            picture_serializer=VaultPictureSerializer(
+                assets_dir=assets_dir,
+                doc_id=doc_id,
+            ),
+            params=MarkdownParams(image_mode=ImageRefMode.PLACEHOLDER),
+        )
+        markdown = serializer.serialize().text
+        markdown = self._post_process(markdown)
+        markdown = self._refine(markdown)
+        title = _extract_title(markdown, file_path)
+        return markdown, title
+
+    # ── deterministic post-processing ────────────────────────────────────────
 
     @staticmethod
-    def _extract_title(markdown: str, file_path: str) -> str:
-        """Extract title from the first H1 heading, falling back to the filename stem."""
-        match = re.search(r"^#\s+(.+)$", markdown, re.MULTILINE)
-        if match:
-            return match.group(1).strip()
-        return Path(file_path).stem
+    def _post_process(md: str) -> str:
+        """Clean up known Docling output artefacts before optional LLM refinement.
+
+        - ``<!-- formula-not-decoded -->`` → ``$[?]$`` (inline math placeholder)
+          Docling emits this when it detects a math formula element but cannot
+          recover the LaTeX source (e.g. image-only formulas in scanned PDFs).
+        - Collapse runs of 3+ blank lines to 2 (keeps paragraphs tight).
+        """
+        # Replace HTML comment placeholder with a readable inline math stub
+        md = md.replace("<!-- formula-not-decoded -->", "$[?]$")
+        # Collapse excessive blank lines
+        md = re.sub(r"\n{3,}", "\n\n", md)
+        return md
+
+    # ── optional LLM post-processing ─────────────────────────────────────────
+
+    def _refine(self, raw_md: str) -> str:
+        """Send Markdown to the configured LLM for OCR noise removal.
+
+        Returns *raw_md* unchanged if:
+        - LLM is not configured (no base_url / model)
+        - The LLM call raises any exception (graceful fallback)
+        """
+        s = self._settings
+        if not (s.llm.base_url and s.llm.model):
+            return raw_md
+        try:
+            client = OpenAI(
+                base_url=s.llm.base_url,
+                api_key=s.llm.api_key or "none",
+            )
+            resp = client.chat.completions.create(
+                model=s.llm.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a Markdown cleanup assistant. "
+                            "Remove OCR noise and garbage characters. "
+                            "Strictly preserve all headings, structure, tables, "
+                            "and ![image] tags exactly as-is. "
+                            "Return only the cleaned Markdown, no commentary."
+                        ),
+                    },
+                    {"role": "user", "content": raw_md},
+                ],
+                temperature=0,
+            )
+            return resp.choices[0].message.content or raw_md
+        except Exception as exc:
+            print(f"[converter] LLM refinement failed (using raw): {exc}")
+            return raw_md
+
+
+# Backwards-compatibility alias — existing code importing DocumentConverter
+# will continue to work without changes.
+DocumentConverter = DoclingConverter

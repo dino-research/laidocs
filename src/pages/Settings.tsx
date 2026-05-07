@@ -2,8 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { apiGet, apiPost, apiPut } from "../lib/sidecar";
 
 interface ServiceConfig { base_url: string; api_key: string; model: string; }
-interface RerankerConfig extends ServiceConfig { enabled: boolean; }
-interface SettingsData { llm: ServiceConfig; embedding: ServiceConfig; reranker: RerankerConfig; port: number; }
+interface SettingsData { llm: ServiceConfig; port: number; }
 interface TestResult { type: "success" | "error"; message: string; }
 
 // ── Field label ───────────────────────────────────────────────────
@@ -71,15 +70,28 @@ function WarpNumberInput({ label, value, onChange, placeholder }: {
 // ── Test result ───────────────────────────────────────────────────
 function TestResultBadge({ result }: { result: TestResult | null }) {
   if (!result) return null;
+  const isSuccess = result.type === "success";
   return (
     <div style={{
-      marginTop: 12, padding: "10px 14px", borderRadius: 8, fontSize: 12,
-      color: result.type === "success" ? "var(--success)" : "var(--error)",
-      background: result.type === "success" ? "var(--success-bg)" : "var(--error-bg)",
-      border: `1px solid ${result.type === "success" ? "rgba(122,171,122,0.2)" : "rgba(192,112,112,0.2)"}`,
-      lineHeight: 1.5, animation: "fadeIn 0.18s ease-out",
+      marginTop: 14, padding: "11px 16px", borderRadius: 10, fontSize: 12,
+      color: isSuccess ? "var(--success)" : "var(--error)",
+      background: isSuccess ? "var(--success-bg)" : "var(--error-bg)",
+      border: `1px solid ${isSuccess ? "rgba(52,211,153,0.15)" : "rgba(248,113,113,0.15)"}`,
+      lineHeight: 1.55, animation: "fadeIn 0.18s ease-out",
+      display: "flex", alignItems: "flex-start", gap: 8,
     }}>
-      {result.message}
+      <span style={{ flexShrink: 0, marginTop: 1 }}>
+        {isSuccess ? (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        ) : (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+          </svg>
+        )}
+      </span>
+      <span>{result.message}</span>
     </div>
   );
 }
@@ -87,24 +99,17 @@ function TestResultBadge({ result }: { result: TestResult | null }) {
 // ── SVG Icons ─────────────────────────────────────────────────────
 const IconLLM = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+    <rect x="2" y="3" width="20" height="14" rx="2" /><line x1="8" y1="21" x2="16" y2="21" /><line x1="12" y1="17" x2="12" y2="21" />
   </svg>
 );
-const IconEmbed = () => (
+
+const IconReleaseNotes = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
-  </svg>
-);
-const IconRerank = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-    <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-  </svg>
-);
-const IconGeneral = () => (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="3"/>
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
+    <polyline points="10 9 9 9 8 9" />
   </svg>
 );
 
@@ -114,12 +119,13 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
     <label style={{ position: "relative", display: "inline-flex", cursor: "pointer", alignItems: "center", gap: 10 }}>
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ position: "absolute", opacity: 0, width: 0, height: 0 }} />
       <div className="warp-toggle-track" style={{
-        background: checked ? "var(--btn-bg)" : "var(--surface-alt)",
-        border: `1px solid ${checked ? "var(--border-strong)" : "var(--border)"}`,
+        background: checked ? "var(--accent)" : "var(--surface-alt)",
+        border: `1px solid ${checked ? "var(--accent)" : "var(--border)"}`,
+        boxShadow: checked ? "0 0 10px var(--accent-subtle)" : "none",
       }}>
         <div className="warp-toggle-thumb" style={{
           left: checked ? 18 : 2,
-          background: checked ? "var(--text-secondary)" : "var(--text-faint)",
+          background: checked ? "#fff" : "var(--text-faint)",
         }} />
       </div>
     </label>
@@ -143,29 +149,37 @@ function ServiceSection({ title, icon, config, onChange, testResult, onTest, tes
 
   return (
     <div className="warp-card" style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
-        <span style={{ color: "var(--text-faint)" }}>{icon}</span>
-        <h2 style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: 0, letterSpacing: "-0.1px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+        <div style={{
+          width: 32, height: 32, borderRadius: 9,
+          background: "var(--accent-subtle)",
+          border: "1px solid var(--border-glow)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "var(--accent-text)",
+        }}>
+          {icon}
+        </div>
+        <h2 style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)", margin: 0, letterSpacing: "-0.1px" }}>
           {title}
         </h2>
       </div>
       {children}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <WarpInput label="Base URL" value={config.base_url} onChange={(v) => onChange({ ...config, base_url: v })} placeholder="https://api.openai.com/v1" />
         <WarpInput label="API Key" value={config.api_key} onChange={(v) => onChange({ ...config, api_key: v })} placeholder="sk-..." type="password" />
         <WarpInput label="Model" value={config.model} onChange={(v) => onChange({ ...config, model: v })} placeholder="gpt-4o" />
       </div>
-      <div style={{ marginTop: 18 }}>
+      <div style={{ marginTop: 20 }}>
         <button
           type="button"
           disabled={testDisabled || testing}
           onClick={handleTest}
           className="btn-ghost"
-          style={{ fontSize: 12, padding: "6px 16px", opacity: testDisabled ? 0.4 : 1, cursor: testDisabled ? "not-allowed" : "pointer" }}
+          style={{ fontSize: 12, padding: "7px 18px", opacity: testDisabled ? 0.4 : 1, cursor: testDisabled ? "not-allowed" : "pointer" }}
         >
           {testing ? (
             <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <span className="spin" style={{ display: "inline-block", width: 11, height: 11, border: "1.5px solid var(--border)", borderTopColor: "var(--text-muted)", borderRadius: "50%" }} />
+              <span className="spin" style={{ display: "inline-block", width: 11, height: 11, border: "1.5px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%" }} />
               Testing…
             </span>
           ) : testLabel}
@@ -177,13 +191,11 @@ function ServiceSection({ title, icon, config, onChange, testResult, onTest, tes
 }
 
 // ── Settings page ─────────────────────────────────────────────────
-type Tab = "llm" | "embedding" | "reranker" | "general";
+type Tab = "llm" | "release_notes";
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: "llm",       label: "LLM",       icon: <IconLLM /> },
-  { id: "embedding", label: "Embedding", icon: <IconEmbed /> },
-  { id: "reranker",  label: "Reranker",  icon: <IconRerank /> },
-  { id: "general",   label: "General",   icon: <IconGeneral /> },
+  { id: "llm", label: "LLM", icon: <IconLLM /> },
+  { id: "release_notes", label: "Release Note", icon: <IconReleaseNotes /> },
 ];
 
 export default function Settings() {
@@ -193,7 +205,6 @@ export default function Settings() {
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [llmTest, setLlmTest] = useState<TestResult | null>(null);
-  const [embTest, setEmbTest] = useState<TestResult | null>(null);
   const [original, setOriginal] = useState<SettingsData | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("llm");
 
@@ -219,46 +230,22 @@ export default function Settings() {
     }
   }, [settings]);
 
-  const testEmbedding = useCallback(async () => {
-    if (!settings) return;
-    setEmbTest(null);
-    try {
-      const res = await apiPost<{ success: boolean; dimension?: number; error?: string }>("/api/settings/test-embedding", {
-        base_url: settings.embedding.base_url || "https://api.openai.com/v1", api_key: settings.embedding.api_key, model: settings.embedding.model,
-      });
-      setEmbTest(res.success
-        ? { type: "success", message: `Embedding OK — dimension: ${res.dimension}` }
-        : { type: "error", message: res.error ?? "Unknown error" });
-    } catch (err: unknown) {
-      setEmbTest({ type: "error", message: (err as Error).message });
-    }
-  }, [settings]);
+
 
   const save = useCallback(async () => {
     if (!settings || !original) return;
     setSaving(true); setSaveStatus(null);
     try {
       const payload: Partial<SettingsData> = {};
-      
+
       const llmBaseUrl = settings.llm.base_url || "https://api.openai.com/v1";
       const llmChanged = llmBaseUrl !== original.llm.base_url || settings.llm.model !== original.llm.model || settings.llm.api_key !== original.llm.api_key;
       if (llmChanged) {
         payload.llm = { base_url: llmBaseUrl, model: settings.llm.model, api_key: settings.llm.api_key };
       }
-      
-      const embBaseUrl = settings.embedding.base_url || "https://api.openai.com/v1";
-      const embChanged = embBaseUrl !== original.embedding.base_url || settings.embedding.model !== original.embedding.model || settings.embedding.api_key !== original.embedding.api_key;
-      if (embChanged) {
-        payload.embedding = { base_url: embBaseUrl, model: settings.embedding.model, api_key: settings.embedding.api_key };
-      }
-      
-      const rerBaseUrl = settings.reranker.base_url || "https://api.openai.com/v1";
-      const rerChanged = rerBaseUrl !== original.reranker.base_url || settings.reranker.model !== original.reranker.model || settings.reranker.api_key !== original.reranker.api_key || settings.reranker.enabled !== original.reranker.enabled;
-      if (rerChanged) {
-        payload.reranker = { base_url: rerBaseUrl, model: settings.reranker.model, api_key: settings.reranker.api_key, enabled: settings.reranker.enabled };
-      }
-      
-      if (settings.port !== original.port) payload.port = settings.port;
+
+
+
       const updated = await apiPut<SettingsData>("/api/settings", payload);
       setSettings(updated); setOriginal(updated);
       setSaveStatus("saved");
@@ -274,19 +261,8 @@ export default function Settings() {
     if (llmBaseUrl !== original.llm.base_url) return true;
     if (settings.llm.model !== original.llm.model) return true;
     if (settings.llm.api_key !== original.llm.api_key) return true;
-    
-    const embBaseUrl = settings.embedding.base_url || "https://api.openai.com/v1";
-    if (embBaseUrl !== original.embedding.base_url) return true;
-    if (settings.embedding.model !== original.embedding.model) return true;
-    if (settings.embedding.api_key !== original.embedding.api_key) return true;
 
-    const rerBaseUrl = settings.reranker.base_url || "https://api.openai.com/v1";
-    if (rerBaseUrl !== original.reranker.base_url) return true;
-    if (settings.reranker.model !== original.reranker.model) return true;
-    if (settings.reranker.api_key !== original.reranker.api_key) return true;
-    if (settings.reranker.enabled !== original.reranker.enabled) return true;
 
-    if (settings.port !== original.port) return true;
 
     return false;
   })();
@@ -294,7 +270,7 @@ export default function Settings() {
   if (loading) return (
     <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center" }}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-        <div style={{ width: 18, height: 18, border: "2px solid var(--border)", borderTopColor: "var(--text-muted)", borderRadius: "50%" }} className="spin" />
+        <div style={{ width: 18, height: 18, border: "2px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%" }} className="spin" />
         <p style={{ color: "var(--text-faint)", fontSize: 13 }}>Loading settings…</p>
       </div>
     </div>
@@ -315,11 +291,11 @@ export default function Settings() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Page header */}
       <div style={{ padding: "28px 40px 0", borderBottom: "1px solid var(--border)", flexShrink: 0 }} className="fade-in">
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 22 }}>
           <div>
             <h1 className="heading-display" style={{ margin: "0 0 6px" }}>Settings</h1>
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
-              Configure LLM, embedding, and reranker providers.
+              Configure LLM provider and general settings.
             </p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
@@ -327,7 +303,13 @@ export default function Settings() {
               <span style={{
                 fontSize: 12, color: isSaveError ? "var(--error)" : "var(--success)",
                 animation: "fadeIn 0.2s ease-out",
+                display: "inline-flex", alignItems: "center", gap: 5,
               }}>
+                {!isSaveError && (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
                 {saveMsg}
               </span>
             )}
@@ -335,12 +317,12 @@ export default function Settings() {
               type="button"
               disabled={saving || !isDirty}
               onClick={save}
-              className="btn-primary"
-              style={{ opacity: (!isDirty && !saving) ? 0.4 : 1 }}
+              className="btn-accent"
+              style={{ opacity: (!isDirty && !saving) ? 0.4 : 1, padding: "8px 20px" }}
             >
               {saving ? (
                 <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                  <span className="spin" style={{ display: "inline-block", width: 12, height: 12, border: "1.5px solid rgba(255,255,255,0.2)", borderTopColor: "var(--text-secondary)", borderRadius: "50%" }} />
+                  <span className="spin" style={{ display: "inline-block", width: 12, height: 12, border: "1.5px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%" }} />
                   Saving…
                 </span>
               ) : "Save Settings"}
@@ -358,18 +340,18 @@ export default function Settings() {
                 onClick={() => setActiveTab(tab.id)}
                 style={{
                   display: "flex", alignItems: "center", gap: 7,
-                  padding: "9px 16px", fontSize: 13, fontWeight: isActive ? 500 : 400,
+                  padding: "10px 18px", fontSize: 13, fontWeight: isActive ? 500 : 400,
                   color: isActive ? "var(--text-primary)" : "var(--text-muted)",
                   background: "none", border: "none", cursor: "pointer",
-                  borderBottom: isActive ? "2px solid var(--text-secondary)" : "2px solid transparent",
+                  borderBottom: isActive ? "2px solid var(--accent)" : "2px solid transparent",
                   marginBottom: -1,
-                  transition: "color 0.15s, border-color 0.15s",
+                  transition: "all 0.15s",
                   fontFamily: "inherit",
                 }}
                 onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = "var(--text-secondary)"; }}
                 onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = "var(--text-muted)"; }}
               >
-                <span style={{ color: isActive ? "var(--text-muted)" : "var(--text-faint)" }}>{tab.icon}</span>
+                <span style={{ color: isActive ? "var(--accent-text)" : "var(--text-faint)" }}>{tab.icon}</span>
                 {tab.label}
               </button>
             );
@@ -383,65 +365,59 @@ export default function Settings() {
 
           {activeTab === "llm" && (
             <ServiceSection
-              title="Language Model"
+              title="Language Model (OpenAI-compatible API)"
               icon={<IconLLM />}
               config={settings.llm}
               onChange={(cfg) => setSettings({ ...settings, llm: cfg })}
               testResult={llmTest}
               onTest={testLlm}
               testLabel="Test connection"
-            />
-          )}
-
-          {activeTab === "embedding" && (
-            <ServiceSection
-              title="Embedding Model"
-              icon={<IconEmbed />}
-              config={settings.embedding}
-              onChange={(cfg) => setSettings({ ...settings, embedding: cfg })}
-              testResult={embTest}
-              onTest={testEmbedding}
-              testLabel="Test connection"
-            />
-          )}
-
-          {activeTab === "reranker" && (
-            <div className="warp-card">
-              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
-                <span style={{ color: "var(--text-faint)" }}><IconRerank /></span>
-                <h2 style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: 0 }}>Reranker</h2>
+            >
+              <div style={{
+                marginBottom: 20, padding: "12px 16px", borderRadius: 8,
+                background: "var(--surface-alt)", border: "1px solid var(--border)",
+                fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5,
+                fontStyle: "italic"
+              }}>
+                The default LLM server is provided by the L.AI P department. To set up your own faster and more powerful model, please configure it here.
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22, padding: "12px 16px", background: "var(--surface-alt)", borderRadius: 8, border: "1px solid var(--border)" }}>
-                <Toggle checked={settings.reranker.enabled} onChange={(v) => setSettings({ ...settings, reranker: { ...settings.reranker, enabled: v } })} />
-                <div>
-                  <div style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>Enable Reranker</div>
-                  <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>Improves search relevance using a cross-encoder model</div>
+            </ServiceSection>
+          )}
+
+
+
+          {activeTab === "release_notes" && (
+            <div className="warp-card">
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 9,
+                  background: "var(--accent-subtle)",
+                  border: "1px solid var(--border-glow)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "var(--accent-text)",
+                }}>
+                  <IconReleaseNotes />
                 </div>
+                <h2 style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)", margin: 0 }}>Release Notes (v1.0)</h2>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 14, opacity: settings.reranker.enabled ? 1 : 0.45, transition: "opacity 0.2s" }}>
-                <WarpInput label="Base URL" value={settings.reranker.base_url} onChange={(v) => setSettings({ ...settings, reranker: { ...settings.reranker, base_url: v } })} placeholder="https://api.openai.com/v1" />
-                <WarpInput label="API Key" value={settings.reranker.api_key} onChange={(v) => setSettings({ ...settings, reranker: { ...settings.reranker, api_key: v } })} placeholder="sk-..." type="password" />
-                <WarpInput label="Model" value={settings.reranker.model} onChange={(v) => setSettings({ ...settings, reranker: { ...settings.reranker, model: v } })} placeholder="rerank-v1" />
-              </div>
-              <div style={{ marginTop: 18 }}>
-                <button disabled className="btn-ghost" style={{ fontSize: 12, padding: "6px 16px", opacity: 0.35, cursor: "not-allowed" }}>
-                  Test connection
-                </button>
-                <span style={{ marginLeft: 10, fontSize: 10, color: "var(--text-faint)", letterSpacing: "1px", textTransform: "uppercase" }}>coming soon</span>
-              </div>
-            </div>
-          )}
+              <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                <h3 style={{ fontSize: 14, color: "var(--text-primary)", marginTop: 0, marginBottom: 10 }}>Version 1.0 - Welcome to LAIDocs!</h3>
+                <p style={{ marginBottom: 12, lineHeight: 1.6 }}>Welcome to the initial release of LAIDocs, your 100% local AI-powered document manager. This release introduces the foundational capabilities:</p>
+                
+                <h4 style={{ fontSize: 13, color: "var(--text-primary)", marginTop: 16, marginBottom: 8 }}>✨ Core Features</h4>
+                <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <li><strong>Convert Documents to Markdown</strong>: Seamlessly upload complex files like PDF, DOCX, and PPTX. LAIDocs automatically extracts text, layouts, and tables into a clean, editable Markdown format.</li>
+                  <li><strong>Web Crawling</strong>: Paste any URL to intelligently extract webpage content into readable Markdown, stripping away ads and unnecessary clutter.</li>
+                  <li><strong>Chat with Documents</strong>: Engage with a smart, DeepAgents-powered AI assistant. It answers questions <em>strictly</em> based on the document's context, remembers conversation history, and manages separate chat sessions.</li>
+                </ul>
 
-          {activeTab === "general" && (
-            <div className="warp-card">
-              <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
-                <span style={{ color: "var(--text-faint)" }}><IconGeneral /></span>
-                <h2 style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: 0 }}>General</h2>
+                <h4 style={{ fontSize: 13, color: "var(--text-primary)", marginTop: 20, marginBottom: 8 }}>🛠️ Tech Stack</h4>
+                <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <li><strong>Frontend & Shell</strong>: Tauri v2 (Rust), React 19, TypeScript, Tailwind CSS, ByteMD.</li>
+                  <li><strong>Backend Core</strong>: Python FastAPI, SQLite (for metadata, tree indexes, and chat history).</li>
+                  <li><strong>AI & Pipelines</strong>: Docling (Conversion), Crawl4AI (Web extraction), LangChain, LangGraph, and DeepAgents (Agentic AI framework).</li>
+                </ul>
               </div>
-              <WarpNumberInput label="Server Port" value={settings.port} onChange={(v) => setSettings({ ...settings, port: v })} placeholder="8008" />
-              <p style={{ marginTop: 8, fontSize: 12, color: "var(--text-faint)", lineHeight: 1.6 }}>
-                Restart required after changing port.
-              </p>
             </div>
           )}
         </div>

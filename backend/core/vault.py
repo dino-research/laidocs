@@ -13,10 +13,24 @@ from typing import Any
 from .config import LAIDOCS_HOME
 
 VAULT_DIR = LAIDOCS_HOME / "vault"
+ASSETS_DIR = VAULT_DIR / "assets"
+
+# System directories that should not appear in user-facing folder listings
+SYSTEM_DIRS = {"assets"}
+
+# Protected directories that appear in listings but cannot be deleted or renamed
+PROTECTED_DIRS = {"unsorted"}
 
 
 def _ensure_vault() -> None:
     VAULT_DIR.mkdir(parents=True, exist_ok=True)
+    ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_assets_dir() -> Path:
+    """Create and return the vault's assets directory (for extracted images)."""
+    ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+    return ASSETS_DIR
 
 
 # ── data class for documents ────────────────────────────────────────
@@ -98,6 +112,10 @@ class VaultManager:
     def delete_folder(self, folder: str) -> None:
         _ensure_vault()
         folder = _norm(folder)
+        if folder in SYSTEM_DIRS:
+            raise PermissionError(f"Cannot delete system folder: {folder}")
+        if folder in PROTECTED_DIRS:
+            raise PermissionError(f"Cannot delete protected folder: {folder}")
         fp = _folder_path(folder)
         if not fp.exists():
             raise FileNotFoundError(f"Folder not found: {folder}")
@@ -107,6 +125,12 @@ class VaultManager:
         _ensure_vault()
         folder = _norm(folder)
         new_folder = _norm(new_folder)
+        if folder in SYSTEM_DIRS:
+            raise PermissionError(f"Cannot rename system folder: {folder}")
+        if folder in PROTECTED_DIRS:
+            raise PermissionError(f"Cannot rename protected folder: {folder}")
+        if new_folder in SYSTEM_DIRS or new_folder in PROTECTED_DIRS:
+            raise PermissionError(f"Cannot rename to reserved folder name: {new_folder}")
         src = _folder_path(folder)
         dst = _folder_path(new_folder)
         if not src.exists():
@@ -117,10 +141,15 @@ class VaultManager:
         return {"old_path": folder, "new_path": new_folder}
 
     def list_folders(self) -> list[dict[str, Any]]:
-        """Return a flat list of all folders in the vault."""
+        """Return a flat list of all folders in the vault.
+        
+        Excludes system directories (e.g. 'assets' used for extracted images).
+        """
         _ensure_vault()
         result: list[dict[str, Any]] = []
         for root, dirs, _files in os.walk(VAULT_DIR):
+            # Prune system dirs so os.walk doesn't descend into them
+            dirs[:] = [d for d in dirs if not (Path(root) == VAULT_DIR and d in SYSTEM_DIRS)]
             for d in sorted(dirs):
                 full = Path(root) / d
                 rel = str(full.relative_to(VAULT_DIR))
@@ -148,6 +177,30 @@ class VaultManager:
         # Ensure .md extension
         if not filename.endswith(".md"):
             filename = filename + ".md"
+
+        # Deduplicate filename if a collision occurs
+        base_name = filename[:-3]
+        counter = 1
+        while True:
+            md_path = fp / filename
+            meta_path = fp / (filename + ".meta.json")
+            
+            # If neither file exists, the filename is safe to use
+            if not md_path.exists() and not meta_path.exists():
+                break
+                
+            # If meta exists, check if we are just overwriting our own document
+            if meta_path.exists():
+                try:
+                    existing_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    if existing_meta.get("doc_id") == doc_id:
+                        break  # Safe to overwrite our own file
+                except (json.JSONDecodeError, OSError):
+                    pass # Corrupt meta file, better to generate a new name
+            
+            # Collision detected, increment suffix and try again
+            filename = f"{base_name}-{counter}.md"
+            counter += 1
 
         meta = DocumentMeta(
             doc_id=doc_id,

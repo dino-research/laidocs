@@ -7,21 +7,10 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from ..core.database import get_db
-from ..core.vault import VAULT_DIR, vault
-from ..models.document import FolderCreate, FolderNode, FolderRename
+from ..core.vault import vault
+from ..models.document import DocumentSummary, FolderCreate, FolderNode, FolderRename
 
 router = APIRouter(prefix="/api/folders", tags=["folders"])
-
-
-# ── Helpers ──────────────────────────────────────────────────────
-
-
-def _count_documents(folder_path: str) -> int:
-    """Count .meta.json files in a vault folder."""
-    fp = VAULT_DIR / folder_path
-    if not fp.exists():
-        return 0
-    return len(list(fp.glob("*.meta.json")))
 
 
 # ── Routes ───────────────────────────────────────────────────────
@@ -31,6 +20,11 @@ def _count_documents(folder_path: str) -> int:
 def list_folders():
     """Return a flat list of all folders with document counts."""
     folders = vault.list_folders()
+    
+    with get_db() as db:
+        cursor = db.execute("SELECT folder, COUNT(*) as count FROM documents GROUP BY folder")
+        counts = {row["folder"] or "": row["count"] for row in cursor.fetchall()}
+
     result: list[FolderNode] = []
     for f in folders:
         result.append(
@@ -38,15 +32,71 @@ def list_folders():
                 path=f["path"],
                 name=f["name"],
                 parent_path=f.get("parent_path"),
-                document_count=_count_documents(f["path"]),
+                document_count=counts.get(f["path"], 0),
             )
         )
     return result
 
 
+@router.get("/tree", response_model=list[FolderNode])
+def get_folder_tree():
+    """Return a nested tree of all folders with their documents."""
+    folders = vault.list_folders()
+    
+    with get_db() as db:
+        cursor = db.execute("SELECT id, folder, title, filename, source_type FROM documents ORDER BY title COLLATE NOCASE")
+        docs_by_folder: dict[str, list[DocumentSummary]] = {}
+        for row in cursor.fetchall():
+            folder_path = row["folder"] or ""
+            if folder_path not in docs_by_folder:
+                docs_by_folder[folder_path] = []
+            docs_by_folder[folder_path].append(
+                DocumentSummary(
+                    id=row["id"],
+                    title=row["title"] or row["filename"].removesuffix(".md"),
+                    filename=row["filename"],
+                    source_type=row["source_type"]
+                )
+            )
+
+    # Build lookup: path -> FolderNode
+    node_map: dict[str, FolderNode] = {}
+    for f in folders:
+        path = f["path"]
+        node_map[path] = FolderNode(
+            path=path,
+            name=f["name"],
+            parent_path=f.get("parent_path"),
+            document_count=len(docs_by_folder.get(path, [])),
+            documents=docs_by_folder.get(path, []),
+        )
+
+    # Build tree: attach children to parents
+    roots: list[FolderNode] = []
+    for path, node in node_map.items():
+        parent = node.parent_path
+        if parent and parent in node_map:
+            node_map[parent].children.append(node)
+        else:
+            roots.append(node)
+
+    # Sort: "unsorted" pinned to top, then alphabetically at each level
+    def _sort_tree(nodes: list[FolderNode]) -> list[FolderNode]:
+        for n in nodes:
+            n.children = _sort_tree(n.children)
+        return sorted(nodes, key=lambda n: (0 if n.path == "unsorted" else 1, n.name.lower()))
+
+    return _sort_tree(roots)
+
+
 @router.post("/", response_model=FolderNode, status_code=201)
 def create_folder(body: FolderCreate):
     """Create a new folder on disk and register it in SQLite."""
+    # Validate folder depth (max 3 levels)
+    parts = Path(body.path).parts
+    if len(parts) > 3:
+        raise HTTPException(status_code=400, detail="Maximum folder depth is 3 levels.")
+        
     # Determine parent_path from the given path
     parent = str(Path(body.path).parent) if str(Path(body.path).parent) != "." else None
 
@@ -80,6 +130,8 @@ def rename_folder(body: FolderRename):
         raise HTTPException(status_code=404, detail=str(exc))
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
 
     # Update SQLite — folder path
     with get_db() as db:
@@ -97,6 +149,8 @@ def delete_folder(path: str):
         vault.delete_folder(path)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
 
     with get_db() as db:
         # Remove documents belonging to this folder (FTS triggers handle cleanup)

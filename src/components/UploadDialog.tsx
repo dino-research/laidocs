@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { apiGet } from "../lib/sidecar";
-import { apiUpload } from "../lib/api-upload";
+import { useUpload } from "../context/UploadContext";
 
 interface Folder { path: string; name: string; document_count: number; }
-interface UploadDialogProps { open: boolean; onClose: () => void; onUploadSuccess: () => void; initialFolder?: string | null; }
+interface UploadDialogProps { open: boolean; onClose: () => void; onUploadSuccess?: () => void; initialFolder?: string | null; }
 
 const ACCEPTED_EXTENSIONS = ".pdf,.docx,.pptx,.xlsx,.md,.txt,.html,.csv";
 
@@ -33,17 +33,17 @@ export default function UploadDialog({ open, onClose, onUploadSuccess, initialFo
   const [selectedFolder, setSelectedFolder] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { startUpload } = useUpload();
 
   useEffect(() => {
     if (!open) return;
     apiGet<Folder[]>("/api/folders/").then(setFolders).catch(() => setFolders([]));
     setSelectedFile(null);
     setSelectedFolder(initialFolder || "");
-    setError(""); setSuccess(""); setDragOver(false);
+    setError(""); setDragOver(false);
   }, [open, initialFolder]);
 
   if (!open) return null;
@@ -54,16 +54,13 @@ export default function UploadDialog({ open, onClose, onUploadSuccess, initialFo
     if (file) setSelectedFile(file);
   };
 
-  const handleUpload = async () => {
+  const handleUpload = () => {
     if (!selectedFile) { setError("Please select a file"); return; }
-    setError(""); setSuccess(""); setUploading(true);
-    try {
-      await apiUpload("/api/documents/upload", selectedFile, selectedFolder);
-      onUploadSuccess();
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    } finally { setUploading(false); }
+    setError("");
+    // Start streaming upload (non-blocking) then close dialog immediately
+    startUpload(selectedFile, selectedFolder);
+    onUploadSuccess?.();
+    onClose();
   };
 
   return (
@@ -75,11 +72,6 @@ export default function UploadDialog({ open, onClose, onUploadSuccess, initialFo
           <button onClick={onClose} className="btn-icon"><IconX /></button>
         </div>
 
-        {success && (
-          <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(109,155,109,0.12)", border: "1px solid rgba(109,155,109,0.3)", borderRadius: 8, fontSize: 13, color: "var(--success)" }}>
-            {success}
-          </div>
-        )}
         {error && (
           <div style={{ marginBottom: 16, padding: "10px 14px", background: "rgba(192,112,112,0.1)", border: "1px solid rgba(192,112,112,0.3)", borderRadius: 8, fontSize: 13, color: "var(--error)" }}>
             {error}
@@ -113,7 +105,7 @@ export default function UploadDialog({ open, onClose, onUploadSuccess, initialFo
             </>
           ) : (
             <>
-              <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: "0 0 4px" }}>Drag & drop a file here</p>
+              <p style={{ fontSize: 14, color: "var(--text-secondary)", margin: "0 0 4px" }}>Drag &amp; drop a file here</p>
               <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>or click to browse</p>
             </>
           )}
@@ -133,13 +125,8 @@ export default function UploadDialog({ open, onClose, onUploadSuccess, initialFo
         {/* Actions */}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button onClick={onClose} className="btn-ghost">Cancel</button>
-          <button onClick={handleUpload} disabled={uploading || !selectedFile} className="btn-primary">
-            {uploading ? (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 13, height: 13, border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "var(--text-secondary)", borderRadius: "50%", display: "inline-block" }} className="spin" />
-                Converting…
-              </span>
-            ) : "Upload"}
+          <button onClick={handleUpload} disabled={!selectedFile} className="btn-primary">
+            Upload
           </button>
         </div>
       </div>

@@ -5,6 +5,8 @@ interface FolderContextValue {
   setActiveFolder: (folder: string | null) => void;
   refreshFoldersKey: number;
   triggerRefreshFolders: () => void;
+  refreshDocsKey: number;
+  triggerRefreshDocs: () => void;
 }
 
 const FolderContext = createContext<FolderContextValue>({
@@ -12,11 +14,14 @@ const FolderContext = createContext<FolderContextValue>({
   setActiveFolder: () => {},
   refreshFoldersKey: 0,
   triggerRefreshFolders: () => {},
+  refreshDocsKey: 0,
+  triggerRefreshDocs: () => {},
 });
 
 export function FolderProvider({ children }: { children: ReactNode }) {
   const [activeFolder, setActiveFolderState] = useState<string | null>(null);
   const [refreshFoldersKey, setRefreshFoldersKey] = useState(0);
+  const [refreshDocsKey, setRefreshDocsKey] = useState(0);
 
   const setActiveFolder = useCallback((folder: string | null) => {
     setActiveFolderState(folder);
@@ -26,8 +31,12 @@ export function FolderProvider({ children }: { children: ReactNode }) {
     setRefreshFoldersKey((k) => k + 1);
   }, []);
 
+  const triggerRefreshDocs = useCallback(() => {
+    setRefreshDocsKey((k) => k + 1);
+  }, []);
+
   return (
-    <FolderContext.Provider value={{ activeFolder, setActiveFolder, refreshFoldersKey, triggerRefreshFolders }}>
+    <FolderContext.Provider value={{ activeFolder, setActiveFolder, refreshFoldersKey, triggerRefreshFolders, refreshDocsKey, triggerRefreshDocs }}>
       {children}
     </FolderContext.Provider>
   );

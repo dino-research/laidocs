@@ -8,5 +8,11 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    proxy: {
+      "/assets": {
+        target: "http://localhost:8008",
+        changeOrigin: true,
+      },
+    },
   },
 });

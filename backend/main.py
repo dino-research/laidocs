@@ -27,9 +27,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.core.config import LAIDOCS_HOME, get_settings
-from backend.core.database import init_db
+from backend.core.database import get_db, init_db
 from backend.core.exceptions import LAIDocsError
-from backend.core.vault import VAULT_DIR
+from backend.core.vault import VAULT_DIR, ensure_assets_dir
 
 # ── CLI arguments ──────────────────────────────────────────────────
 
@@ -48,38 +48,22 @@ async def lifespan(app: FastAPI):
     (LAIDOCS_HOME / "data").mkdir(parents=True, exist_ok=True)
     init_db()
 
-    # Initialise LanceDB — this also auto-migrates the vector column schema
-    # from the old variable-length list to FixedSizeList if needed.
-    try:
-        from backend.core.database import get_lance_table, _is_fixed_size_vector_schema
-        import lancedb, pyarrow as pa
+    # Ensure the default "unsorted" (Inbox) folder always exists
+    unsorted_dir = VAULT_DIR / "unsorted"
+    unsorted_dir.mkdir(parents=True, exist_ok=True)
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO folders (path, name) VALUES (?, ?)",
+            ("unsorted", "unsorted"),
+        )
 
-        db = lancedb.connect(str(LAIDOCS_HOME / "data" / "vectors.lance"))
-        table_existed = "chunks" in db.table_names()
-        old_schema_bad = False
-        if table_existed:
-            t = db.open_table("chunks")
-            old_schema_bad = not _is_fixed_size_vector_schema(t)
+    # Mount vault assets directory as static files for image serving
+    from fastapi.staticfiles import StaticFiles
+    assets_path = ensure_assets_dir()
+    app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
 
-        get_lance_table()  # triggers migration + creation
-
-        if old_schema_bad:
-            # Old table had wrong schema; re-index all documents in background.
-            print("[sidecar] LanceDB schema migrated → scheduling full re-index")
-            from backend.services.indexer import get_indexer
-
-            def _startup_reindex():
-                try:
-                    results = get_indexer().reindex_all()
-                    total = sum(results.values())
-                    print(f"[sidecar] Re-index complete: {len(results)} docs, {total} chunks")
-                except Exception as exc:
-                    print(f"[sidecar] Re-index failed: {exc}")
-
-            import threading
-            threading.Thread(target=_startup_reindex, daemon=True).start()
-    except Exception as exc:
-        print(f"[sidecar] LanceDB init warning: {exc}")
+    from backend.core.telemetry import track_event_sync
+    track_event_sync("app_launched")
 
     print("[sidecar] Server ready")
     yield
@@ -127,14 +111,12 @@ from backend.api import (
     settings_router,
     documents_router,
     folders_router,
-    search_router,
     chat_router,
 )
 
 app.include_router(settings_router)
 app.include_router(documents_router)
 app.include_router(folders_router)
-app.include_router(search_router)
 app.include_router(chat_router)
 
 

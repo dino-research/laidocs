@@ -3,21 +3,27 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { apiGet, apiPost } from "../lib/sidecar";
 import { useFolderContext } from "../context/FolderContext";
 import { useSidecar } from "../hooks/useSidecar";
+import { useUpload, PendingUpload } from "../context/UploadContext";
+import FileTree, { FolderNode } from "./FileTree";
+import UploadDialog from "./UploadDialog";
+import CrawlDialog from "./CrawlDialog";
 
-interface Folder {
-  path: string;
-  name: string;
-  document_count: number;
-}
+const getFolderOfDoc = (folders: FolderNode[], docId: string): string | null => {
+  for (const f of folders) {
+    if (f.documents.some((d) => d.id === docId)) return f.path;
+    if (f.children && f.children.length > 0) {
+      const found = getFolderOfDoc(f.children, docId);
+      if (found) return found;
+    }
+  }
+  return null;
+};
 
 // ── SVG Icons ──────────────────────────────────────────────────────
-const IconDocs = () => (
+const IconHome = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-    <polyline points="14 2 14 8 20 8"/>
-    <line x1="16" y1="13" x2="8" y2="13"/>
-    <line x1="16" y1="17" x2="8" y2="17"/>
-    <line x1="10" y1="9" x2="8" y2="9"/>
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+    <polyline points="9 22 9 12 15 12 15 22"/>
   </svg>
 );
 
@@ -64,24 +70,27 @@ function NavItem({
   onClick?: () => void;
   children: React.ReactNode;
 }) {
+  const [hovered, setHovered] = useState(false);
   return (
     <button
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         position: "relative",
         display: "flex",
         alignItems: "center",
         gap: 9,
         width: "100%",
-        padding: "7px 12px 7px 14px",
-        borderRadius: 7,
+        padding: "8px 12px 8px 14px",
+        borderRadius: 8,
         fontSize: 13.5,
         fontWeight: active ? 500 : 400,
-        color: active ? "var(--text-primary)" : "var(--text-muted)",
-        background: active ? "var(--surface-alt)" : "transparent",
+        color: active ? "var(--text-primary)" : hovered ? "var(--text-secondary)" : "var(--text-muted)",
+        background: active ? "var(--accent-subtle)" : hovered ? "var(--surface-hover)" : "transparent",
         border: "none",
         cursor: "pointer",
-        transition: "color 0.15s ease, background 0.15s ease",
+        transition: "all 0.15s ease",
         textDecoration: "none",
         textAlign: "left",
       }}
@@ -123,7 +132,7 @@ function ReloadButton() {
         background: "transparent",
         color: "var(--text-faint)",
         cursor: "pointer",
-        transition: "color 0.15s, background 0.15s",
+        transition: "all 0.15s ease",
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.color = "var(--text-muted)";
@@ -141,32 +150,120 @@ function ReloadButton() {
   );
 }
 
+const STAGE_LABELS: Record<string, { label: string; done: boolean; isError?: boolean }> = {
+  uploading:  { label: "uploading…",  done: false },
+  uploaded:   { label: "uploaded",    done: true  },
+  converting: { label: "converting…", done: false },
+  converted:  { label: "converted",   done: true  },
+  crawling:   { label: "crawling…",   done: false },
+  crawled:    { label: "crawled",     done: true  },
+  saving:     { label: "saving…",     done: false },
+  saved:      { label: "saved",       done: true  },
+  error:      { label: "failed",      done: true, isError: true },
+};
+
+function PendingUploadItem({ upload }: { upload: PendingUpload }) {
+  const info = STAGE_LABELS[upload.stage] ?? { label: upload.stage, done: false };
+  return (
+    <div style={{
+      padding: "7px 12px 7px 14px",
+      borderRadius: 8,
+      background: info.isError ? "var(--error-bg)" : info.done ? "var(--success-bg)" : "var(--surface-alt)",
+      border: `1px solid ${info.isError ? "rgba(248,113,113,0.15)" : info.done ? "rgba(52,211,153,0.1)" : "var(--border)"}`,
+      transition: "all 0.2s ease",
+    }}>
+      <div style={{
+        fontSize: 13,
+        color: "var(--text-secondary)",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        marginBottom: 4,
+      }}>
+        {upload.docTitle || upload.filename}
+      </div>
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        fontSize: 11,
+        color: info.isError ? "var(--error)" : info.done ? "var(--success)" : "var(--text-faint)",
+        letterSpacing: "0.4px",
+      }}>
+        {!info.done && !info.isError && (
+          <span
+            className="spin"
+            style={{
+              display: "inline-block",
+              width: 9,
+              height: 9,
+              border: "1.5px solid var(--border)",
+              borderTopColor: "var(--accent)",
+              borderRadius: "50%",
+              flexShrink: 0,
+            }}
+          />
+        )}
+        {info.isError && (
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        )}
+        {info.done && !info.isError && (
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        )}
+        {upload.error || info.label}
+      </div>
+    </div>
+  );
+}
+
 // ── Sidebar ────────────────────────────────────────────────────────
-export default function Sidebar() {
+
+interface SidebarProps {
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+}
+
+export default function Sidebar({ collapsed: _collapsed, onToggleCollapse }: SidebarProps) {
   const { activeFolder, setActiveFolder, refreshFoldersKey, triggerRefreshFolders } =
     useFolderContext();
   const { status } = useSidecar();
-  const [folders, setFolders] = useState<Folder[]>([]);
+  const { pendingUploads } = useUpload();
+  const [tree, setTree] = useState<FolderNode[]>([]);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [newFolderError, setNewFolderError] = useState("");
   const [creating, setCreating] = useState(false);
+  const [showNewFile, setShowNewFile] = useState(false);
+  const [newFileName, setNewFileName] = useState("");
+  const [newFileError, setNewFileError] = useState("");
+  const [creatingFile, setCreatingFile] = useState(false);
+  const [ctxUploadFolder, setCtxUploadFolder] = useState<string | null>(null);
+  const [ctxCrawlFolder, setCtxCrawlFolder] = useState<string | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
 
-  const fetchFolders = useCallback(async () => {
+  // Extract active doc ID from URL
+  const activeDocId = location.pathname.startsWith("/doc/")
+    ? location.pathname.replace("/doc/", "")
+    : null;
+
+  const fetchTree = useCallback(async () => {
     try {
-      const data = await apiGet<Folder[]>("/api/folders/");
-      setFolders(data);
+      const data = await apiGet<FolderNode[]>("/api/folders/tree");
+      setTree(data);
     } catch {
-      setFolders([]);
+      setTree([]);
     }
   }, [refreshFoldersKey]);
 
   useEffect(() => {
     if (status !== "ready") return;
-    fetchFolders();
-  }, [status, fetchFolders]);
+    fetchTree();
+  }, [status, fetchTree]);
 
   const handleCreateFolder = async () => {
     const name = newFolderName.trim();
@@ -192,7 +289,51 @@ export default function Sidebar() {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleCreateFolder();
-    if (e.key === "Escape") { setShowNewFolder(false); setNewFolderName(""); setNewFolderError(""); }
+    if (e.key === "Escape") {
+      setShowNewFolder(false);
+      setNewFolderName("");
+      setNewFolderError("");
+    }
+  };
+
+  const handleCreateFile = async () => {
+    const name = newFileName.trim();
+    if (!name) { setNewFileError("Name is required"); return; }
+    setNewFileError("");
+    setCreatingFile(true);
+    try {
+      let targetFolder = activeFolder;
+      if (!targetFolder && activeDocId) {
+        targetFolder = getFolderOfDoc(tree, activeDocId);
+      }
+      
+      const result = await apiPost<{ id: string }>("/api/documents/create", {
+        filename: name,
+        folder: targetFolder || "unsorted",
+      });
+      setNewFileName("");
+      setShowNewFile(false);
+      triggerRefreshFolders();
+      navigate(`/doc/${result.id}`);
+    } catch (err) {
+      setNewFileError(err instanceof Error ? err.message : "Failed to create file");
+    } finally {
+      setCreatingFile(false);
+    }
+  };
+
+  const handleFileKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleCreateFile();
+    if (e.key === "Escape") {
+      setShowNewFile(false);
+      setNewFileName("");
+      setNewFileError("");
+    }
+  };
+
+  const handleFileClick = (docId: string) => {
+    setActiveFolder(null);
+    navigate(`/doc/${docId}`);
   };
 
   const isDocsPage = location.pathname === "/";
@@ -201,7 +342,7 @@ export default function Sidebar() {
 
   return (
     <aside style={{
-      width: 240,
+      width: "100%",
       flexShrink: 0,
       display: "flex",
       flexDirection: "column",
@@ -210,66 +351,157 @@ export default function Sidebar() {
       borderRight: "1px solid var(--border)",
     }}>
       {/* Brand */}
-      <div style={{ padding: "18px 16px 14px", borderBottom: "1px solid var(--border)" }}>
+      <div style={{
+        padding: "16px 14px 14px",
+        borderBottom: "1px solid var(--border)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}>
         <button
           onClick={() => { setActiveFolder(null); navigate("/"); }}
-          style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left", width: "100%", display: "flex", alignItems: "center", gap: 10 }}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0, textAlign: "left", display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}
         >
           <div style={{
-            width: 28, height: 28, borderRadius: 8,
-            background: "var(--surface-alt)",
-            border: "1px solid var(--border-strong)",
+            width: 30, height: 30, borderRadius: 9,
+            background: "linear-gradient(135deg, var(--accent-subtle), var(--surface-alt))",
+            border: "1px solid var(--border-glow)",
             display: "flex", alignItems: "center", justifyContent: "center",
             flexShrink: 0,
           }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-text)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
               <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
             </svg>
           </div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", letterSpacing: "-0.2px", lineHeight: 1 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", letterSpacing: "-0.3px", lineHeight: 1 }}>
               LAIDocs
             </div>
-            <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 3, letterSpacing: "1.2px", textTransform: "uppercase" }}>
+            <div style={{ fontSize: 9, color: "var(--text-faint)", marginTop: 3, letterSpacing: "1.4px", textTransform: "uppercase" }}>
               Knowledge Base
             </div>
           </div>
+        </button>
+        <button
+          onClick={onToggleCollapse}
+          title="Collapse sidebar"
+          className="btn-icon"
+          style={{ flexShrink: 0, width: 26, height: 26, marginLeft: 4 }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
         </button>
       </div>
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "10px 8px 0" }}>
-        {/* All Documents */}
+        {/* Home */}
         <NavItem active={isDocsPage && activeFolder === null} onClick={() => { setActiveFolder(null); navigate("/"); }}>
-          <IconDocs />
-          All Documents
+          <IconHome />
+          Home
         </NavItem>
 
-        {/* Search */}
-        <div style={{ marginTop: 2 }}>
-          <NavItem active={isSearchPage} onClick={() => navigate("/search")}>
-            <IconSearch />
-            Search
-          </NavItem>
-        </div>
+        {/* Pending uploads */}
+        {pendingUploads.length > 0 && (
+          <div style={{ marginTop: 10, marginBottom: 6 }}>
+            <div style={{ padding: "0 6px 6px" }}>
+              <span className="label-upper" style={{ color: "var(--accent-text)", fontSize: 9 }}>Processing</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {pendingUploads.map((upload) => (
+                <PendingUploadItem key={upload.clientId} upload={upload} />
+              ))}
+            </div>
+          </div>
+        )}
 
-        {/* Folders section */}
+
+        {/* Explorer section */}
         <div style={{ marginTop: 20 }}>
           <div style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
             padding: "0 6px 8px",
           }}>
-            <span className="label-upper">Folders</span>
-            <button
-              onClick={() => { setShowNewFolder(!showNewFolder); setNewFolderName(""); setNewFolderError(""); }}
-              className="btn-icon"
-              title="New Folder"
-              style={{ width: 20, height: 20, borderRadius: 4 }}
-            >
-              <IconPlus />
-            </button>
+            <span className="label-upper">Explorer</span>
+            <div style={{ display: "flex", gap: 2 }}>
+              <button
+                onClick={() => { setShowNewFile(!showNewFile); setNewFileName(""); setNewFileError(""); setShowNewFolder(false); }}
+                className="btn-icon"
+                title="New File"
+                style={{
+                  width: 26, height: 26, borderRadius: 6,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: showNewFile ? "var(--accent-subtle)" : "transparent",
+                  color: showNewFile ? "var(--accent-text)" : undefined,
+                }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="12" y1="11" x2="12" y2="17" />
+                  <line x1="9" y1="14" x2="15" y2="14" />
+                </svg>
+              </button>
+              <button
+                onClick={() => { setShowNewFolder(!showNewFolder); setNewFolderName(""); setNewFolderError(""); setShowNewFile(false); }}
+                className="btn-icon"
+                title="New Folder"
+                style={{
+                  width: 26, height: 26, borderRadius: 6,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: showNewFolder ? "var(--accent-subtle)" : "transparent",
+                  color: showNewFolder ? "var(--accent-text)" : undefined,
+                }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+            </div>
           </div>
+
+          {/* New file input */}
+          {showNewFile && (
+            <div style={{ marginBottom: 8, padding: "0 2px", animation: "fadeIn 0.18s ease-out" }}>
+              <input
+                type="text"
+                autoFocus
+                value={newFileName}
+                onChange={(e) => { setNewFileName(e.target.value); setNewFileError(""); }}
+                onKeyDown={handleFileKeyDown}
+                placeholder="filename.md"
+                className="warp-input"
+                style={{ fontSize: 13, padding: "6px 10px", borderRadius: 6 }}
+              />
+              {newFileError && (
+                <p style={{ fontSize: 11, color: "var(--error)", margin: "4px 0 0 2px" }}>{newFileError}</p>
+              )}
+              <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                <button
+                  onClick={handleCreateFile}
+                  disabled={creatingFile}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                    fontSize: 12, color: "var(--accent-text)", background: "var(--accent-subtle)",
+                    border: "1px solid var(--border-glow)", borderRadius: 6, cursor: "pointer",
+                    padding: "4px 10px", transition: "all 0.15s", opacity: creatingFile ? 0.6 : 1,
+                  }}
+                >
+                  {creatingFile ? <span className="spin" style={{ display: "inline-block", width: 10, height: 10, border: "1.5px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%" }} /> : <IconCheck />}
+                  Create
+                </button>
+                <button
+                  onClick={() => { setShowNewFile(false); setNewFileName(""); setNewFileError(""); }}
+                  style={{ fontSize: 12, color: "var(--text-faint)", background: "none", border: "none", cursor: "pointer", padding: "4px 6px" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* New folder input */}
           {showNewFolder && (
@@ -295,12 +527,12 @@ export default function Sidebar() {
                   disabled={creating}
                   style={{
                     display: "inline-flex", alignItems: "center", gap: 5,
-                    fontSize: 12, color: "var(--text-secondary)", background: "var(--surface-alt)",
-                    border: "1px solid var(--border)", borderRadius: 5, cursor: "pointer",
-                    padding: "4px 10px", transition: "border-color 0.15s", opacity: creating ? 0.6 : 1,
+                    fontSize: 12, color: "var(--accent-text)", background: "var(--accent-subtle)",
+                    border: "1px solid var(--border-glow)", borderRadius: 6, cursor: "pointer",
+                    padding: "4px 10px", transition: "all 0.15s", opacity: creating ? 0.6 : 1,
                   }}
                 >
-                  {creating ? <span className="spin" style={{ display: "inline-block", width: 10, height: 10, border: "1.5px solid var(--border)", borderTopColor: "var(--text-muted)", borderRadius: "50%" }} /> : <IconCheck />}
+                  {creating ? <span className="spin" style={{ display: "inline-block", width: 10, height: 10, border: "1.5px solid var(--border)", borderTopColor: "var(--accent)", borderRadius: "50%" }} /> : <IconCheck />}
                   Create
                 </button>
                 <button
@@ -313,68 +545,28 @@ export default function Sidebar() {
             </div>
           )}
 
-          {/* Folder list */}
-          {folders.length === 0 && !showNewFolder ? (
-            <p style={{ fontSize: 12, color: "var(--text-faint)", padding: "2px 8px", fontStyle: "italic" }}>No folders yet</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 1 }} className="stagger-children">
-              {folders.map((folder) => {
-                const isActive = isDocsPage && activeFolder === folder.path;
-                return (
-                  <button
-                    key={folder.path}
-                    onClick={() => { setActiveFolder(folder.path); navigate("/"); }}
-                    style={{
-                      position: "relative",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      width: "100%",
-                      padding: "6px 12px 6px 14px",
-                      borderRadius: 7,
-                      fontSize: 13,
-                      fontWeight: isActive ? 500 : 400,
-                      color: isActive ? "var(--text-primary)" : "var(--text-muted)",
-                      background: isActive ? "var(--surface-alt)" : "transparent",
-                      border: "none",
-                      cursor: "pointer",
-                      transition: "color 0.15s ease, background 0.15s ease",
-                      textAlign: "left",
-                      justifyContent: "space-between",
-                    }}
-                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = "var(--text-secondary)"; e.currentTarget.style.background = isActive ? "var(--surface-alt)" : "var(--surface-hover)"; }}
-                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = isActive ? "var(--surface-alt)" : "transparent"; }}
-                  >
-                    {isActive && <span className="nav-item-active-bar" />}
-                    <span style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden", flex: 1 }}>
-                      <span style={{ color: "var(--text-faint)", flexShrink: 0 }}><IconFolder /></span>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {folder.name || folder.path}
-                      </span>
-                    </span>
-                    <span style={{
-                      flexShrink: 0,
-                      fontSize: 10,
-                      letterSpacing: "0.3px",
-                      color: "var(--text-faint)",
-                      background: "var(--surface-alt)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 3,
-                      padding: "1px 5px",
-                      fontVariantNumeric: "tabular-nums",
-                    }}>
-                      {folder.document_count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {/* File tree */}
+          <FileTree
+            tree={tree}
+            activeDocId={activeDocId}
+            onFileClick={handleFileClick}
+            activeFolder={activeFolder}
+            onFolderClick={(path) => setActiveFolder(path)}
+            triggerRefreshFolders={triggerRefreshFolders}
+            onUploadToFolder={(folderPath) => setCtxUploadFolder(folderPath)}
+            onCrawlToFolder={(folderPath) => setCtxCrawlFolder(folderPath)}
+          />
         </div>
       </nav>
 
       {/* Footer: Settings + Reload */}
-      <div style={{ padding: "8px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 4 }}>
+      <div style={{
+        padding: "8px",
+        borderTop: "1px solid var(--border)",
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+      }}>
         <div style={{ flex: 1 }}>
           <NavItem active={isSettingsPage} onClick={() => navigate("/settings")}>
             <IconSettings />
@@ -383,6 +575,20 @@ export default function Sidebar() {
         </div>
         <ReloadButton />
       </div>
+
+      {/* Context-menu triggered dialogs */}
+      <UploadDialog
+        open={ctxUploadFolder !== null}
+        onClose={() => setCtxUploadFolder(null)}
+        onUploadSuccess={triggerRefreshFolders}
+        initialFolder={ctxUploadFolder}
+      />
+      <CrawlDialog
+        open={ctxCrawlFolder !== null}
+        onClose={() => setCtxCrawlFolder(null)}
+        onCrawlSuccess={triggerRefreshFolders}
+        initialFolder={ctxCrawlFolder}
+      />
     </aside>
   );
 }

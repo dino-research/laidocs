@@ -21,6 +21,15 @@ class DocumentMetadata(BaseModel):
     updated_at: str = ""
 
 
+class DocumentSummary(BaseModel):
+    """Lightweight document info for tree views."""
+
+    id: str
+    title: str
+    filename: str
+    source_type: str = "file"
+
+
 class FolderNode(BaseModel):
     """A folder entry with optional tree structure."""
 
@@ -29,6 +38,7 @@ class FolderNode(BaseModel):
     parent_path: str | None = None
     document_count: int = 0
     children: list[FolderNode] = Field(default_factory=list)
+    documents: list[DocumentSummary] = Field(default_factory=list)
 
 
 class FolderCreate(BaseModel):

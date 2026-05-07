@@ -1,7 +1,6 @@
-"""SQLite + LanceDB database layer for LAIDocs.
+"""SQLite database layer for LAIDocs.
 
-SQLite: document metadata, folder tree, FTS5 full-text index.
-LanceDB: vector embeddings for semantic (dense) search.
+Stores document metadata, folder tree, and tree index JSON.
 """
 
 from __future__ import annotations
@@ -15,7 +14,6 @@ from typing import Generator
 from .config import LAIDOCS_HOME
 
 DB_PATH = LAIDOCS_HOME / "data" / "laidocs.db"
-LANCE_PATH = str(LAIDOCS_HOME / "data" / "vectors.lance")
 
 # ---------------------------------------------------------------------------
 # SQLite schema
@@ -37,36 +35,26 @@ CREATE TABLE IF NOT EXISTS documents (
     source_type TEXT NOT NULL CHECK(source_type IN ('file', 'url')),
     original_path TEXT,
     content TEXT,
+    tree_index TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (folder) REFERENCES folders(path)
 );
-
-CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
-    title,
-    content,
-    content=documents,
-    content_rowid=rowid
-);
-
--- Triggers to keep FTS in sync with documents table
-CREATE TRIGGER IF NOT EXISTS documents_ai AFTER INSERT ON documents BEGIN
-    INSERT INTO documents_fts(rowid, title, content)
-    VALUES (new.rowid, new.title, new.content);
-END;
-
-CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
-    INSERT INTO documents_fts(documents_fts, rowid, title, content)
-    VALUES ('delete', old.rowid, old.title, old.content);
-END;
-
-CREATE TRIGGER IF NOT EXISTS documents_au AFTER UPDATE ON documents BEGIN
-    INSERT INTO documents_fts(documents_fts, rowid, title, content)
-    VALUES ('delete', old.rowid, old.title, old.content);
-    INSERT INTO documents_fts(rowid, title, content)
-    VALUES (new.rowid, new.title, new.content);
-END;
 """
+
+# Migration for existing databases
+_MIGRATIONS = [
+    "ALTER TABLE documents ADD COLUMN tree_index TEXT",
+    """CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    doc_id TEXT NOT NULL,
+    session_id INTEGER NOT NULL DEFAULT 1,
+    role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)""",
+    "CREATE INDEX IF NOT EXISTS idx_chat_messages_doc_id ON chat_messages(doc_id)",
+]
 
 
 def init_db() -> None:
@@ -76,6 +64,12 @@ def init_db() -> None:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.executescript(_SCHEMA)
+        # Run migrations (ignore errors for already-applied ones)
+        for migration in _MIGRATIONS:
+            try:
+                conn.execute(migration)
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
 
 # ---------------------------------------------------------------------------
@@ -97,106 +91,3 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
         raise
     finally:
         conn.close()
-
-
-def db_dependency() -> Generator[sqlite3.Connection, None, None]:
-    """FastAPI Depends-compatible wrapper around get_db()."""
-    gen = get_db()
-    try:
-        yield next(gen)
-    finally:
-        try:
-            next(gen)
-        except StopIteration:
-            pass
-
-
-# ---------------------------------------------------------------------------
-# LanceDB vector store
-# ---------------------------------------------------------------------------
-
-# Default embedding dimension — overridden at runtime when first vector is stored.
-# text-embedding-3-small = 1536, text-embedding-ada-002 = 1536, nomic-embed = 768, etc.
-DEFAULT_EMBEDDING_DIM = 1536
-
-_lance_table_cache: object | None = None
-_lance_lock = threading.Lock()
-
-
-def _is_fixed_size_vector_schema(table) -> bool:
-    """Return True if the table's vector column is a FixedSizeList (required for ANN search)."""
-    import pyarrow as pa
-    field = table.schema.field("vector")
-    return pa.types.is_fixed_size_list(field.type)
-
-
-def get_lance_table(embedding_dim: int = DEFAULT_EMBEDDING_DIM):
-    """Return (and lazily create) the LanceDB 'chunks' table.
-
-    Columns:
-        id          -- chunk id  "<doc_id>__<chunk_index>"
-        doc_id      -- parent document id
-        chunk_index -- position within the document  (int32)
-        content     -- raw text of this chunk
-        vector      -- embedding vector as FixedSizeList[float32, embedding_dim]
-
-    Thread-safe: a lock prevents race conditions when multiple background
-    tasks call this concurrently.  Importing lancedb/pyarrow is deferred
-    so that the rest of the app works even when these packages are absent.
-
-    IMPORTANT: The vector column MUST use pa.list_(pa.float32(), embedding_dim)
-    (FixedSizeList) — NOT pa.list_(pa.float32()) (variable-length list).
-    LanceDB requires FixedSizeList for ANN vector search.
-    """
-    global _lance_table_cache
-
-    if _lance_table_cache is not None:
-        return _lance_table_cache
-
-    with _lance_lock:
-        # Double-check after acquiring lock
-        if _lance_table_cache is not None:
-            return _lance_table_cache
-
-        import lancedb
-        import pyarrow as pa
-
-        db = lancedb.connect(LANCE_PATH)
-
-        # Schema with FixedSizeList — required for ANN vector search in LanceDB.
-        schema = pa.schema(
-            [
-                pa.field("id", pa.string()),
-                pa.field("doc_id", pa.string()),
-                pa.field("chunk_index", pa.int32()),
-                pa.field("content", pa.string()),
-                pa.field("vector", pa.list_(pa.float32(), embedding_dim)),
-            ]
-        )
-
-        table_names = db.table_names()
-        needs_recreate = False
-
-        if "chunks" not in table_names:
-            _lance_table_cache = db.create_table("chunks", schema=schema)
-        else:
-            existing = db.open_table("chunks")
-            # Migrate if vector column is variable-length list (old broken schema)
-            if not _is_fixed_size_vector_schema(existing):
-                needs_recreate = True
-
-            if needs_recreate:
-                # Drop and recreate with correct FixedSizeList schema.
-                # All stored vectors are unusable anyway (wrong schema).
-                db.drop_table("chunks")
-                _lance_table_cache = db.create_table("chunks", schema=schema)
-            else:
-                _lance_table_cache = existing
-
-        return _lance_table_cache
-
-
-def invalidate_lance_cache() -> None:
-    """Reset the cached LanceDB table handle (useful after schema changes)."""
-    global _lance_table_cache
-    _lance_table_cache = None
