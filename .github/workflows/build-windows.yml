@@ -28,7 +28,31 @@ jobs:
       shell: powershell
       run: |
         cd backend
-        pyinstaller --name main --onefile --clean --noconfirm --hidden-import docling --hidden-import docling_core --hidden-import pydantic --hidden-import lancedb --hidden-import uvicorn main.py
+        pyinstaller --name main --onefile --clean --noconfirm `
+          --collect-all docling `
+          --collect-all docling_core `
+          --collect-all deepagents `
+          --collect-all crawl4ai `
+          --collect-all langchain `
+          --collect-all langchain_openai `
+          --collect-all langchain_core `
+          --collect-all langchain_text_splitters `
+          --collect-all langgraph `
+          --collect-all langgraph_checkpoint_sqlite `
+          --collect-all pydantic `
+          --collect-all markitdown `
+          --hidden-import uvicorn `
+          --hidden-import uvicorn.logging `
+          --hidden-import uvicorn.loops `
+          --hidden-import uvicorn.loops.auto `
+          --hidden-import uvicorn.protocols `
+          --hidden-import uvicorn.protocols.http `
+          --hidden-import uvicorn.protocols.http.auto `
+          --hidden-import uvicorn.protocols.websockets `
+          --hidden-import uvicorn.protocols.websockets.auto `
+          --hidden-import uvicorn.lifespan `
+          --hidden-import uvicorn.lifespan.on `
+          main.py
         New-Item -ItemType Directory -Force -Path ..\src-tauri\bin\api | Out-Null
         Copy-Item dist\main.exe ..\src-tauri\bin\api\main-x86_64-pc-windows-msvc.exe
 
