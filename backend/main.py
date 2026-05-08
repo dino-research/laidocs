@@ -108,12 +108,14 @@ async def generic_error_handler(request: Request, exc: Exception):
 # ── Routers ────────────────────────────────────────────────────────
 
 from backend.api import (
+    backup_router,
     settings_router,
     documents_router,
     folders_router,
     chat_router,
 )
 
+app.include_router(backup_router)
 app.include_router(settings_router)
 app.include_router(documents_router)
 app.include_router(folders_router)

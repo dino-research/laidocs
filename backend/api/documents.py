@@ -333,6 +333,27 @@ async def crawl_url(background_tasks: BackgroundTasks, body: CrawlRequest):
     )
 
 
+class SaveToFileRequest(BaseModel):
+    doc_id: str
+    target_path: str
+
+
+@documents_router.post("/save-to-file")
+async def save_document_to_file(body: SaveToFileRequest):
+    """Save a document's markdown content to a file at the specified path."""
+    result = vault.get_document(body.doc_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    content, _meta = result
+    target = Path(body.target_path)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to write file: {exc}")
+    return {"success": True, "path": str(target)}
+
+
 @documents_router.get("/{doc_id}")
 async def get_document(doc_id: str):
     """Get a single document's content and metadata."""
@@ -360,6 +381,8 @@ async def download_document(doc_id: str):
             "Content-Disposition": f'attachment; filename="{filename}"',
         },
     )
+
+
 
 
 @documents_router.put("/{doc_id}")

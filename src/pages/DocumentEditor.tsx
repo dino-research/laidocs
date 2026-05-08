@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useSidecar } from "../hooks/useSidecar";
-import { apiGet, apiPut, apiDelete, API_BASE } from "../lib/sidecar";
+import { apiGet, apiPost, apiPut, apiDelete, API_BASE } from "../lib/sidecar";
 import { Editor } from "@bytemd/react";
 import gfm from "@bytemd/plugin-gfm";
 import "bytemd/dist/index.css";
@@ -402,9 +402,24 @@ export default function DocumentEditor() {
         <button
           className="btn-icon"
           title="Download as .md"
-          onClick={() => {
-            if (id) {
-              window.open(`${API_BASE}/api/documents/${id}/download`, "_blank");
+          onClick={async () => {
+            if (!id) return;
+            try {
+              const { save } = await import("@tauri-apps/plugin-dialog");
+              const filename = doc?.filename?.endsWith(".md")
+                ? doc.filename
+                : (doc?.filename || "document") + ".md";
+              const targetPath = await save({
+                defaultPath: filename,
+                filters: [{ name: "Markdown", extensions: ["md"] }],
+              });
+              if (!targetPath) return;
+              await apiPost("/api/documents/save-to-file", {
+                doc_id: id,
+                target_path: targetPath,
+              });
+            } catch (err) {
+              console.error("Download failed:", err);
             }
           }}
         >

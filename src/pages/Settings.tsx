@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { apiGet, apiPost, apiPut } from "../lib/sidecar";
+import DataTab, { type BackupStats, type PreviewResult } from "../components/DataTab";
 
 interface ServiceConfig { base_url: string; api_key: string; model: string; }
 interface SettingsData { llm: ServiceConfig; port: number; }
@@ -113,6 +114,14 @@ const IconReleaseNotes = () => (
   </svg>
 );
 
+const IconData = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <ellipse cx="12" cy="5" rx="9" ry="3" />
+    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
+    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+  </svg>
+);
+
 // ── Toggle ────────────────────────────────────────────────────────
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -191,10 +200,11 @@ function ServiceSection({ title, icon, config, onChange, testResult, onTest, tes
 }
 
 // ── Settings page ─────────────────────────────────────────────────
-type Tab = "llm" | "release_notes";
+type Tab = "llm" | "data" | "release_notes";
 
 const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "llm", label: "LLM", icon: <IconLLM /> },
+  { id: "data", label: "Data", icon: <IconData /> },
   { id: "release_notes", label: "Release Note", icon: <IconReleaseNotes /> },
 ];
 
@@ -207,6 +217,15 @@ export default function Settings() {
   const [llmTest, setLlmTest] = useState<TestResult | null>(null);
   const [original, setOriginal] = useState<SettingsData | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("llm");
+
+  // ── Data tab state ─────────────────────────────────────────────
+  const [backupStats, setBackupStats] = useState<BackupStats | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [dataMsg, setDataMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [importPreview, setImportPreview] = useState<PreviewResult | null>(null);
+  const [pendingImportPath, setPendingImportPath] = useState<string | null>(null);
+  const [confirmReplace, setConfirmReplace] = useState(false);
 
   useEffect(() => {
     apiGet<SettingsData>("/api/settings")
@@ -373,17 +392,33 @@ export default function Settings() {
               onTest={testLlm}
               testLabel="Test connection"
             >
-              <div style={{
+              {/* <div style={{
                 marginBottom: 20, padding: "12px 16px", borderRadius: 8,
                 background: "var(--surface-alt)", border: "1px solid var(--border)",
                 fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5,
                 fontStyle: "italic"
               }}>
-                The default LLM server is provided by the L.AI P department. To set up your own faster and more powerful model, please configure it here.
-              </div>
+                The default LLM server is provided by the Language AI Part. To set up your own faster and more powerful model, please configure it here.
+              </div> */}
             </ServiceSection>
           )}
 
+          {activeTab === "data" && <DataTab
+            stats={backupStats}
+            setStats={setBackupStats}
+            exporting={exporting}
+            setExporting={setExporting}
+            importing={importing}
+            setImporting={setImporting}
+            dataMsg={dataMsg}
+            setDataMsg={setDataMsg}
+            importPreview={importPreview}
+            setImportPreview={setImportPreview}
+            pendingImportPath={pendingImportPath}
+            setPendingImportPath={setPendingImportPath}
+            confirmReplace={confirmReplace}
+            setConfirmReplace={setConfirmReplace}
+          />}
 
 
           {activeTab === "release_notes" && (
@@ -403,7 +438,7 @@ export default function Settings() {
               <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
                 <h3 style={{ fontSize: 14, color: "var(--text-primary)", marginTop: 0, marginBottom: 10 }}>Version 1.0 - Welcome to LAIDocs!</h3>
                 <p style={{ marginBottom: 12, lineHeight: 1.6 }}>Welcome to the initial release of LAIDocs, your 100% local AI-powered document manager. This release introduces the foundational capabilities:</p>
-                
+
                 <h4 style={{ fontSize: 13, color: "var(--text-primary)", marginTop: 16, marginBottom: 8 }}>✨ Core Features</h4>
                 <ul style={{ paddingLeft: 20, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
                   <li><strong>Convert Documents to Markdown</strong>: Seamlessly upload complex files like PDF, DOCX, and PPTX. LAIDocs automatically extracts text, layouts, and tables into a clean, editable Markdown format.</li>
