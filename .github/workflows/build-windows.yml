@@ -25,11 +25,12 @@ jobs:
         pip install pyinstaller
 
     - name: Build Python Sidecar
+      shell: powershell
       run: |
         cd backend
         pyinstaller --name main --onefile --clean --noconfirm --hidden-import docling --hidden-import docling_core --hidden-import pydantic --hidden-import lancedb --hidden-import uvicorn main.py
-        mkdir -p ../src-tauri/bin/api
-        copy dist\main.exe ..\src-tauri\bin\api\main-x86_64-pc-windows-msvc.exe
+        New-Item -ItemType Directory -Force -Path ..\src-tauri\bin\api | Out-Null
+        Copy-Item dist\main.exe ..\src-tauri\bin\api\main-x86_64-pc-windows-msvc.exe
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
