@@ -88,20 +88,25 @@ def export_backup(target_path: str) -> dict[str, Any]:
 
     manifest = _build_manifest()
 
-    with zipfile.ZipFile(str(target), "w", zipfile.ZIP_DEFLATED) as zf:
-        # Write manifest
-        zf.writestr(MANIFEST_NAME, json.dumps(manifest, indent=2, ensure_ascii=False))
+    try:
+        with zipfile.ZipFile(str(target), "w", zipfile.ZIP_DEFLATED) as zf:
+            # Write manifest
+            zf.writestr(MANIFEST_NAME, json.dumps(manifest, indent=2, ensure_ascii=False))
 
-        # Add vault directory
-        if VAULT_DIR.exists():
-            for file_path in VAULT_DIR.rglob("*"):
-                if file_path.is_file():
-                    arc_name = "vault/" + str(file_path.relative_to(VAULT_DIR))
-                    zf.write(str(file_path), arc_name)
+            # Add vault directory
+            if VAULT_DIR.exists():
+                for file_path in VAULT_DIR.rglob("*"):
+                    if file_path.is_file():
+                        arc_name = "vault/" + str(file_path.relative_to(VAULT_DIR))
+                        zf.write(str(file_path), arc_name)
 
-        # Add database
-        if DB_PATH.exists():
-            zf.write(str(DB_PATH), "data/laidocs.db")
+            # Add database
+            if DB_PATH.exists():
+                zf.write(str(DB_PATH), "data/laidocs.db")
+    except Exception as e:
+        if target.exists():
+            target.unlink()
+        raise e
 
     file_size = target.stat().st_size
     return {"success": True, "file_size": file_size, "stats": manifest["stats"]}
@@ -157,12 +162,20 @@ def import_backup(source_path: str, mode: str) -> dict[str, Any]:
         raise ValueError(f"Invalid mode: {mode}")
 
 
+def _safe_resolve(base_dir: Path, rel_path: str) -> Path:
+    """Resolve a relative path against a base directory safely, preventing path traversal."""
+    dest = (base_dir / rel_path).resolve()
+    if not str(dest).startswith(str(base_dir.resolve())):
+        raise ValueError(f"Malicious path detected: {rel_path}")
+    return dest
+
+
 def _extract_vault_files(zf: zipfile.ZipFile) -> None:
     """Extract vault/ entries from zip to VAULT_DIR."""
     for name in zf.namelist():
         if name.startswith("vault/") and not name.endswith("/"):
             rel = name[len("vault/"):]
-            dest = VAULT_DIR / rel
+            dest = _safe_resolve(VAULT_DIR, rel)
             dest.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(name) as src:
                 dest.write_bytes(src.read())
@@ -181,18 +194,39 @@ def _import_replace(source: Path) -> dict[str, Any]:
     with zipfile.ZipFile(str(source), "r") as zf:
         manifest = json.loads(zf.read(MANIFEST_NAME))
 
-        # Clear vault (except recreate the dir)
-        if VAULT_DIR.exists():
-            shutil.rmtree(VAULT_DIR)
-        VAULT_DIR.mkdir(parents=True, exist_ok=True)
+        backup_vault = VAULT_DIR.with_name(VAULT_DIR.name + "_backup_tmp")
+        backup_db = DB_PATH.with_name(DB_PATH.name + "_backup_tmp")
 
-        # Clear database
-        if DB_PATH.exists():
-            DB_PATH.unlink()
+        try:
+            # Move existing
+            if VAULT_DIR.exists():
+                VAULT_DIR.rename(backup_vault)
+            if DB_PATH.exists():
+                DB_PATH.rename(backup_db)
 
-        # Extract everything
-        _extract_vault_files(zf)
-        _extract_database(zf)
+            VAULT_DIR.mkdir(parents=True, exist_ok=True)
+
+            # Extract everything
+            _extract_vault_files(zf)
+            _extract_database(zf)
+
+            # Clean up backup
+            if backup_vault.exists():
+                shutil.rmtree(backup_vault)
+            if backup_db.exists():
+                backup_db.unlink()
+        except Exception as e:
+            # Rollback
+            if VAULT_DIR.exists():
+                shutil.rmtree(VAULT_DIR)
+            if DB_PATH.exists():
+                DB_PATH.unlink()
+
+            if backup_vault.exists():
+                backup_vault.rename(VAULT_DIR)
+            if backup_db.exists():
+                backup_db.rename(DB_PATH)
+            raise e
 
     # Reinitialize DB (apply any missing migrations)
     init_db()
@@ -212,15 +246,15 @@ def _import_merge(source: Path) -> dict[str, Any]:
     imported_docs = 0
     skipped = 0
 
-    # Collect existing doc_ids from local vault
+    # Collect existing doc_ids from local database
     existing_ids: set[str] = set()
-    for meta_file in VAULT_DIR.rglob("*.meta.json"):
-        try:
-            data = json.loads(meta_file.read_text(encoding="utf-8"))
-            if "doc_id" in data:
-                existing_ids.add(data["doc_id"])
-        except (json.JSONDecodeError, OSError):
-            continue
+    from ..core.database import get_db
+    try:
+        with get_db() as conn:
+            rows = conn.execute("SELECT id FROM documents").fetchall()
+            existing_ids = {row["id"] for row in rows}
+    except sqlite3.OperationalError:
+        pass
 
     with zipfile.ZipFile(str(source), "r") as zf:
         # Build map of backup meta files
@@ -242,7 +276,7 @@ def _import_merge(source: Path) -> dict[str, Any]:
 
             # Copy meta file
             rel = meta_name[len("vault/"):]
-            dest = VAULT_DIR / rel
+            dest = _safe_resolve(VAULT_DIR, rel)
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(zf.read(meta_name))
 
@@ -250,7 +284,7 @@ def _import_merge(source: Path) -> dict[str, Any]:
             md_name = meta_name.replace(".meta.json", "")
             if md_name in zf.namelist():
                 md_rel = md_name[len("vault/"):]
-                md_dest = VAULT_DIR / md_rel
+                md_dest = _safe_resolve(VAULT_DIR, md_rel)
                 md_dest.write_bytes(zf.read(md_name))
 
             imported_docs += 1
@@ -259,7 +293,7 @@ def _import_merge(source: Path) -> dict[str, Any]:
         for name in zf.namelist():
             if name.startswith("vault/assets/") and not name.endswith("/"):
                 rel = name[len("vault/"):]
-                dest = VAULT_DIR / rel
+                dest = _safe_resolve(VAULT_DIR, rel)
                 if not dest.exists():
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     dest.write_bytes(zf.read(name))
@@ -297,42 +331,48 @@ def _merge_database(backup_db_path: str, existing_ids: set[str]) -> None:
     try:
         # Merge documents table
         try:
-            rows = backup_conn.execute("SELECT * FROM documents").fetchall()
             with get_db() as conn:
-                for row in rows:
+                cursor = backup_conn.execute("SELECT * FROM documents")
+                docs_to_insert = []
+                for row in cursor:
                     if row["id"] not in existing_ids:
-                        conn.execute(
-                            """INSERT OR IGNORE INTO documents
-                               (id, folder, filename, title, source_type,
-                                original_path, content, tree_index,
-                                created_at, updated_at)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                            (
-                                row["id"], row["folder"], row["filename"],
-                                row["title"], row["source_type"],
-                                row["original_path"], row["content"],
-                                row["tree_index"], row["created_at"],
-                                row["updated_at"],
-                            ),
-                        )
+                        docs_to_insert.append((
+                            row["id"], row["folder"], row["filename"],
+                            row["title"], row["source_type"],
+                            row["original_path"], row["content"],
+                            row["tree_index"], row["created_at"],
+                            row["updated_at"]
+                        ))
+                if docs_to_insert:
+                    conn.executemany(
+                        """INSERT OR IGNORE INTO documents
+                           (id, folder, filename, title, source_type,
+                            original_path, content, tree_index,
+                            created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        docs_to_insert
+                    )
         except sqlite3.OperationalError:
             pass  # Table might not exist in backup
 
         # Merge chat messages for new documents only
         try:
-            rows = backup_conn.execute("SELECT * FROM chat_messages").fetchall()
             with get_db() as conn:
-                for row in rows:
+                cursor = backup_conn.execute("SELECT * FROM chat_messages")
+                chats_to_insert = []
+                for row in cursor:
                     if row["doc_id"] not in existing_ids:
-                        conn.execute(
-                            """INSERT INTO chat_messages
-                               (doc_id, session_id, role, content, created_at)
-                               VALUES (?, ?, ?, ?, ?)""",
-                            (
-                                row["doc_id"], row["session_id"], row["role"],
-                                row["content"], row["created_at"],
-                            ),
-                        )
+                        chats_to_insert.append((
+                            row["doc_id"], row["session_id"], row["role"],
+                            row["content"], row["created_at"],
+                        ))
+                if chats_to_insert:
+                    conn.executemany(
+                        """INSERT INTO chat_messages
+                           (doc_id, session_id, role, content, created_at)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        chats_to_insert
+                    )
         except sqlite3.OperationalError:
             pass  # Table might not exist in backup
     finally:
