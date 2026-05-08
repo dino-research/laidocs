@@ -77,10 +77,29 @@ jobs:
     - name: Build Tauri App
       run: pnpm tauri build
 
-    - name: Upload Artifact
+    - name: Prepare Portable Build
+      shell: powershell
+      run: |
+        New-Item -ItemType Directory -Force -Path PortableBuild | Out-Null
+        Copy-Item src-tauri\target\release\LAIDocs.exe PortableBuild\
+        if (Test-Path src-tauri\target\release\bin) { Copy-Item -Recurse src-tauri\target\release\bin PortableBuild\ }
+
+    - name: Upload Installers
       uses: actions/upload-artifact@v4
       with:
-        name: LAIDocs-Windows-Portable
+        name: LAIDocs-Installers
         path: |
           src-tauri/target/release/bundle/nsis/*.exe
           src-tauri/target/release/bundle/msi/*.msi
+
+    - name: Upload Portable Zip
+      uses: actions/upload-artifact@v4
+      with:
+        name: LAIDocs-Portable-Windows
+        path: PortableBuild/
+
+    - name: Upload Sidecar Debug
+      uses: actions/upload-artifact@v4
+      with:
+        name: LAIDocs-Sidecar-Debug
+        path: src-tauri/bin/api/main-x86_64-pc-windows-msvc.exe
