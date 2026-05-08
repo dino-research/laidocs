@@ -367,10 +367,6 @@ export default function WelcomePanel() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 11, color: "var(--text-faint)", letterSpacing: "0.2px" }}>
-              © 2026 Dino
-            </span>
-            <span style={{ fontSize: 11, color: "var(--text-faint)", opacity: 0.4 }}>·</span>
             <span style={{
               fontSize: 10,
               fontWeight: 500,
@@ -383,6 +379,11 @@ export default function WelcomePanel() {
             }}>
               v1.0
             </span>
+            <span style={{ fontSize: 11, color: "var(--text-faint)", letterSpacing: "0.2px" }}>
+              | © 2026 NMT Team | Language AI P | SRV
+            </span>
+            <span style={{ fontSize: 11, color: "var(--text-faint)", opacity: 0.4 }}>·</span>
+
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -390,7 +391,7 @@ export default function WelcomePanel() {
               <path d="M22 4L12 13 2 4" />
             </svg>
             <span style={{ fontSize: 11, color: "var(--text-faint)", letterSpacing: "0.2px" }}>
-              ngohongthai.uet@gmail.com
+              hongthai.ng@samsung.com
             </span>
           </div>
         </div>

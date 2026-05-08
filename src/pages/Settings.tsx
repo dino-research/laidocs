@@ -392,14 +392,14 @@ export default function Settings() {
               onTest={testLlm}
               testLabel="Test connection"
             >
-              {/* <div style={{
+              <div style={{
                 marginBottom: 20, padding: "12px 16px", borderRadius: 8,
                 background: "var(--surface-alt)", border: "1px solid var(--border)",
                 fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5,
                 fontStyle: "italic"
               }}>
                 The default LLM server is provided by the Language AI Part. To set up your own faster and more powerful model, please configure it here.
-              </div> */}
+              </div>
             </ServiceSection>
           )}
 
